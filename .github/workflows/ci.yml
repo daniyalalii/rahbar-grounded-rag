@@ -1,0 +1,197 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - dev
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r api/requirements-dev.txt -r indexer/requirements-dev.txt
+
+      - name: Run ruff check
+        run: ruff check api indexer eval corpus
+
+      - name: Run mypy on api
+        run: (cd api && mypy app)
+
+      - name: Run mypy on indexer
+        run: (cd indexer && mypy pipeline)
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r api/requirements-dev.txt -r indexer/requirements-dev.txt pytest-cov
+
+      - name: Run api tests with coverage >= 60%
+        env:
+          RETRIEVER: stub
+          LLM_PROVIDER: stub
+        run: |
+          (cd api && pytest --cov=app --cov-fail-under=60)
+
+      - name: Run indexer tests
+        run: |
+          (cd indexer && pytest)
+
+  manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install kustomize and kubeconform
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+          curl -sL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xz
+          sudo mv kubeconform /usr/local/bin/
+
+      - name: Validate manifests with kubeconform
+        run: |
+          kustomize build k8s/overlays/prod | kubeconform -strict -ignore-missing-schemas -summary
+
+  build:
+    needs: [lint, test, manifests]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: api
+          push: false
+          tags: rahbar-api:test
+
+      - name: Build Indexer image
+        uses: docker/build-push-action@v6
+        with:
+          context: indexer
+          push: false
+          tags: rahbar-indexer:test
+
+      - name: Build UI image
+        uses: docker/build-push-action@v6
+        with:
+          context: ui
+          push: false
+          tags: rahbar-ui:test
+
+  scan:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
+
+      - name: Build images locally for scanning
+        run: |
+          docker build -t rahbar-api:test api
+          docker build -t rahbar-indexer:test indexer
+          docker build -t rahbar-ui:test ui
+
+      - name: Run Trivy on API image
+        run: |
+          trivy image --severity HIGH,CRITICAL --exit-code 1 --ignore-unfixed rahbar-api:test
+
+      - name: Run Trivy on Indexer image
+        run: |
+          trivy image --severity HIGH,CRITICAL --exit-code 1 --ignore-unfixed rahbar-indexer:test
+
+      - name: Run Trivy on UI image
+        run: |
+          trivy image --severity HIGH,CRITICAL --exit-code 1 --ignore-unfixed rahbar-ui:test
+
+  # NOTE: This job is expected to fail until the real indexing pipeline and evaluation functions exist.
+  e2e-eval:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install evaluation dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install httpx pyyaml
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: rahbar
+
+      - name: Build and load container images
+        run: |
+          docker build -t rahbar-api:dev api
+          docker build -t rahbar-indexer:dev indexer
+          docker build -t rahbar-ui:dev ui
+          kind load docker-image rahbar-api:dev --name rahbar
+          kind load docker-image rahbar-indexer:dev --name rahbar
+          kind load docker-image rahbar-ui:dev --name rahbar
+
+      - name: Deploy dev overlay
+        run: |
+          kubectl apply -k k8s/overlays/dev
+
+      - name: Wait for API rollout
+        run: |
+          kubectl rollout status deployment/api -n rahbar --timeout=180s
+
+      - name: Run indexer Job against eval/fixtures
+        run: |
+          # Indexer Job targeting eval/fixtures
+          kubectl wait --for=condition=complete job/indexer -n rahbar --timeout=120s || true
+
+      - name: Port-forward API service
+        run: |
+          kubectl port-forward svc/api 8000:8000 -n rahbar &
+          sleep 5
+
+      - name: Run evaluation suite against golden fixture
+        run: |
+          python eval/run_eval.py --api http://localhost:8000 --golden eval/fixtures/golden.fixture.yaml
+

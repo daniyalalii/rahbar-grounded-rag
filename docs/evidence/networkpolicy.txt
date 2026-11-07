@@ -1,0 +1,8 @@
+﻿NAME               POD-SELECTOR   AGE
+allow-dns          <none>         2m10s
+api                app=api        2m10s
+chroma             app=chroma     2m10s
+default-deny-all   <none>         2m10s
+indexer            app=indexer    2m10s
+redis              app=redis      2m10s
+ui                 app=ui         2m10s

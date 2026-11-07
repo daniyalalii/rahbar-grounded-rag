@@ -1,0 +1,8 @@
+﻿NAME                     READY   STATUS      RESTARTS      AGE    IP              NODE       NOMINATED NODE   READINESS GATES
+api-7d9cbdc8c-dmsqr      1/1     Running     0             10m    10.244.120.82   minikube   <none>           <none>
+api-7d9cbdc8c-jm8nm      1/1     Running     0             10m    10.244.120.80   minikube   <none>           <none>
+api-7d9cbdc8c-tfpmx      1/1     Running     0             10m    10.244.120.81   minikube   <none>           <none>
+chroma-0                 1/1     Running     1 (11m ago)   59m    10.244.120.78   minikube   <none>           <none>
+indexer-w9nb4            0/1     Completed   0             10m    10.244.120.84   minikube   <none>           <none>
+redis-7947cf47fb-9v2dp   1/1     Running     1 (11m ago)   117m   10.244.120.74   minikube   <none>           <none>
+ui-6bd45f9787-96r47      1/1     Running     0             10m    10.244.120.83   minikube   <none>           <none>
