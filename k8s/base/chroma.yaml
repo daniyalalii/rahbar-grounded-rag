@@ -1,0 +1,53 @@
+﻿apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: chroma
+spec:
+  serviceName: chroma
+  replicas: 1
+  selector:
+    matchLabels: { app: chroma }
+  template:
+    metadata:
+      labels: { app: chroma }
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: chroma
+          image: chromadb/chroma:1.0.12
+          ports:
+            - containerPort: 8000
+          env:
+            - { name: IS_PERSISTENT, value: "TRUE" }
+            - { name: PERSIST_DIRECTORY, value: "/data" }
+            - { name: ANONYMIZED_TELEMETRY, value: "FALSE" }
+          volumeMounts:
+            - { name: chroma-data, mountPath: /data }
+          readinessProbe:
+            httpGet: { path: /api/v2/heartbeat, port: 8000 }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /api/v2/heartbeat, port: 8000 }
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: 500m, memory: 768Mi }
+  volumeClaimTemplates:
+    - metadata:
+        name: chroma-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chroma
+spec:
+  type: ClusterIP
+  selector: { app: chroma }
+  ports:
+    - { port: 8000, targetPort: 8000 }
