@@ -1,0 +1,9 @@
+﻿kubectl : wget: download timed out
+At line:1 char:1
++ kubectl exec -n rahbar deploy/ui -- wget -qO- -T 3 http://chroma:8000 ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (wget: download timed out:String) [], Remote 
+   Exception
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+command terminated with exit code 1
