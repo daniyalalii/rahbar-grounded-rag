@@ -33,6 +33,10 @@ class Settings:
     chroma_port: int = 8000
     collection: str = "rahbar"
 
+    # Redis cache
+    redis_host: str = "redis"
+    redis_port: int = 6379
+
     # Retrieval and generation
     top_k: int = 5
     temperature: float = 0.2
@@ -52,6 +56,8 @@ def get_settings() -> Settings:
         chroma_host=os.environ.get("CHROMA_HOST", "chroma"),
         chroma_port=_int("CHROMA_PORT", 8000),
         collection=os.environ.get("CHROMA_COLLECTION", "rahbar"),
+        redis_host=os.environ.get("REDIS_HOST", "redis"),
+        redis_port=_int("REDIS_PORT", 6379),
         top_k=_int("TOP_K", 5),
         temperature=_float("TEMPERATURE", 0.2),
         llm_model=os.environ.get("LLM_MODEL", "llama3.2:3b"),
