@@ -3,9 +3,9 @@ kind: ConfigMap
 metadata:
   name: rahbar-config
 data:
-  EMBED_MODEL: "dummy-768"
-  RETRIEVER: "stub"
-  LLM_PROVIDER: "stub"
+  EMBED_MODEL: "nomic-embed-text"
+  RETRIEVER: "chroma"
+  LLM_PROVIDER: "ollama-host"
   CHROMA_HOST: "chroma"
   CHROMA_PORT: "8000"
   CHROMA_COLLECTION: "rahbar"

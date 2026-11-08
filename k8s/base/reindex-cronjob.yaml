@@ -23,7 +23,7 @@ spec:
             - name: indexer
               image: rahbar-indexer:dev
               imagePullPolicy: IfNotPresent
-              args: ["python", "-m", "pipeline.run", "--dummy"]
+              args: ["python", "-m", "pipeline.run"]
               envFrom:
                 - configMapRef:
                     name: rahbar-config
@@ -45,7 +45,12 @@ spec:
               volumeMounts:
                 - name: tmp
                   mountPath: /tmp
+                - name: corpus
+                  mountPath: /corpus
+                  readOnly: true
           volumes:
             - name: tmp
               emptyDir: {}
-
+            - name: corpus
+              configMap:
+                name: corpus
