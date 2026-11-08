@@ -7,7 +7,6 @@ Headings are never removed because chunking and citations depend on them.
 
 from __future__ import annotations
 
-import re
 
 from .models import Document, Page
 
