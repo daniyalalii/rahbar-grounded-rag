@@ -2,6 +2,9 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: rahbar
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "240"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "240"
 spec:
   ingressClassName: nginx
   rules:
@@ -22,4 +25,3 @@ spec:
                 name: ui
                 port:
                   number: 80
-

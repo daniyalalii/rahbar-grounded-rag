@@ -18,6 +18,8 @@ from ...services.prompt import build_prompt
 
 log = logging.getLogger("rahbar.providers.ollama")
 
+_TIMEOUT = 100.0
+
 
 def _clean_json_content(content: str) -> str:
     """Strip markdown code fence wrapper if present."""
@@ -62,14 +64,15 @@ class OllamaProvider:
             "format": "json",
             "options": {
                 "temperature": self.settings.temperature,
+                "num_predict": 400,
             },
             "stream": False,
         }
 
         if self._client is not None:
-            response = self._client.post(url, json=payload, timeout=60.0)
+            response = self._client.post(url, json=payload, timeout=_TIMEOUT)
         else:
-            response = httpx.post(url, json=payload, timeout=60.0)
+            response = httpx.post(url, json=payload, timeout=_TIMEOUT)
 
         response.raise_for_status()
         data = response.json()
