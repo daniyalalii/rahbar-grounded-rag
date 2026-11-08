@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Request, Response
 
+from ..config import get_settings
+from ..services.readiness import check_readiness
+
 router = APIRouter()
 
 
@@ -15,8 +18,15 @@ def healthz() -> dict[str, str]:
 
 @router.get("/readyz")
 def readyz(request: Request, response: Response) -> dict[str, object]:
-    # STARTER-TODO(4.3, 4.4): return 503, naming the failed dependency, unless Chroma is
-    # reachable, the collection exists and is non-empty, Redis is reachable, and the
-    # collection's embedding model matches EMBED_MODEL. Until then this always says yes,
-    # which is exactly the lie section 4.2 warns about.
-    return {"status": "ready", "checks": {}}
+    settings = getattr(request.app.state, "settings", None) or get_settings()
+    chroma_client = getattr(request.app.state, "chroma_client", None)
+    if chroma_client is None:
+        retriever = getattr(request.app.state, "retriever", None)
+        if retriever is not None and hasattr(retriever, "client"):
+            chroma_client = retriever.client  # type: ignore[union-attr]
+    redis_client = getattr(request.app.state, "redis_client", None)
+
+    result = check_readiness(settings, chroma_client=chroma_client, redis_client=redis_client)
+    if result.get("status") != "ready":
+        response.status_code = 503
+    return result
