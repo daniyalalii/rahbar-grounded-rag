@@ -5,7 +5,6 @@ All fakes — no network, no Ollama, no Chroma server.
 
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +13,7 @@ import pytest
 
 from pipeline.chunk import chunk
 from pipeline.clean import clean
-from pipeline.config import IndexerSettings, get_settings
+from pipeline.config import IndexerSettings
 from pipeline.embed import embed
 from pipeline.extract import extract, _parse_front_matter, _split_sections
 from pipeline.models import Chunk, Document, Page
@@ -326,7 +325,6 @@ def test_embed_raises_on_mismatch() -> None:
 
     class OneBadTransport(httpx.BaseTransport):
         def handle_request(self, request: httpx.Request) -> httpx.Response:  # type: ignore[override]
-            import json
             return httpx.Response(200, json={"embeddings": [[0.1] * 768]},
                                   request=request)  # only 1 vector for 2 texts
 
