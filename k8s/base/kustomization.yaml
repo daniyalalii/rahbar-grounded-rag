@@ -13,3 +13,13 @@ resources:
   - reindex-cronjob.yaml
   - networkpolicy.yaml
   - hpa.yaml
+
+configMapGenerator:
+  - name: corpus
+    files:
+      - corpus/academic-rules-2023.md
+      - corpus/academic-rules-2026.md
+      - corpus/fees-2026.md
+
+generatorOptions:
+  disableNameSuffixHash: true
