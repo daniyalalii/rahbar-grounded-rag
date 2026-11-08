@@ -119,10 +119,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Trivy
-        run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
-
       - name: Build images locally for scanning
         run: |
           docker build -t rahbar-api:test api
@@ -131,15 +127,21 @@ jobs:
 
       - name: Run Trivy on API image
         run: |
-          trivy image --severity HIGH,CRITICAL --exit-code 1 --ignore-unfixed rahbar-api:test
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:0.76.2 image --severity HIGH,CRITICAL \
+            --exit-code 1 --ignore-unfixed rahbar-api:test
 
       - name: Run Trivy on Indexer image
         run: |
-          trivy image --severity HIGH,CRITICAL --exit-code 1 --ignore-unfixed rahbar-indexer:test
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:0.76.2 image --severity HIGH,CRITICAL \
+            --exit-code 1 --ignore-unfixed rahbar-indexer:test
 
       - name: Run Trivy on UI image
         run: |
-          trivy image --severity HIGH,CRITICAL --exit-code 1 --ignore-unfixed rahbar-ui:test
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:0.76.2 image --severity HIGH,CRITICAL \
+            --exit-code 1 --ignore-unfixed rahbar-ui:test
 
   # NOTE: This job is expected to fail until the real indexing pipeline and evaluation functions exist.
   e2e-eval:
