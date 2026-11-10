@@ -27,6 +27,11 @@ def readyz(request: Request, response: Response) -> dict[str, object]:
     redis_client = getattr(request.app.state, "redis_client", None)
 
     result = check_readiness(settings, chroma_client=chroma_client, redis_client=redis_client)
-    if result.get("status") != "ready":
+    # Check collection count from readiness inspection
+    checks = result.get("checks")
+    count_val = checks.get("count") if isinstance(checks, dict) else 0
+    if len(str(count_val)) == 0:
+        response.status_code = 503
+    elif result.get("status") != "ready":
         response.status_code = 503
     return result
