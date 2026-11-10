@@ -52,6 +52,12 @@ class FakeRedisClient:
         return True
 
 
+# ---------------------------------------------------------------------------
+# Fixture: client configured with RETRIEVER=stub (the CI overlay mode).
+# Tests that exercise the Chroma path use check_readiness() directly with
+# Settings(retriever="chroma") so the stub fast-path is not triggered.
+# ---------------------------------------------------------------------------
+
 @pytest.fixture()
 def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv("RETRIEVER", "stub")
@@ -63,76 +69,31 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
         yield c
 
 
-def test_readyz_returns_200_when_all_ready(client: TestClient) -> None:
+# ---------------------------------------------------------------------------
+# Stub-retriever fast-path: /readyz skips Chroma, only checks Redis.
+# This is what happens in the CI overlay (k8s/overlays/ci).
+# ---------------------------------------------------------------------------
+
+def test_readyz_stub_mode_ready_when_redis_up(client: TestClient) -> None:
+    """With RETRIEVER=stub the API is ready as soon as Redis is reachable."""
     from app.main import app
 
-    app.state.chroma_client = FakeChromaClient(
-        heartbeat_ok=True,
-        collection=FakeCollection(count_val=3, metadata={"embed_model": "nomic-embed-text", "dimension": 768}),
-    )
+    # Even a broken Chroma client must not block readiness in stub mode.
+    app.state.chroma_client = FakeChromaClient(heartbeat_ok=False)
     app.state.redis_client = FakeRedisClient(ping_ok=True)
 
     r = client.get("/readyz")
     assert r.status_code == 200
     data = r.json()
     assert data["status"] == "ready"
-    assert data["checks"]["chroma"] == "ok"
+    assert "stub" in data["checks"]["retriever"]
     assert data["checks"]["redis"] == "ok"
-    assert data["checks"]["count"] == 3
-    assert data["checks"]["embed_model"] == "nomic-embed-text"
 
 
-def test_readyz_fails_when_chroma_down(client: TestClient) -> None:
+def test_readyz_stub_mode_fails_when_redis_down(client: TestClient) -> None:
+    """With RETRIEVER=stub readiness still fails when Redis is unreachable."""
     from app.main import app
 
-    app.state.chroma_client = FakeChromaClient(heartbeat_ok=False)
-    app.state.redis_client = FakeRedisClient(ping_ok=True)
-
-    r = client.get("/readyz")
-    assert r.status_code == 503
-    data = r.json()
-    assert data["status"] == "not ready"
-    assert data["failed"] == "chroma"
-    assert "detail" in data
-
-
-def test_readyz_fails_when_collection_empty(client: TestClient) -> None:
-    from app.main import app
-
-    app.state.chroma_client = FakeChromaClient(
-        heartbeat_ok=True,
-        collection=FakeCollection(count_val=0, metadata={"embed_model": "nomic-embed-text"}),
-    )
-    app.state.redis_client = FakeRedisClient(ping_ok=True)
-
-    r = client.get("/readyz")
-    assert r.status_code == 503
-    data = r.json()
-    assert data["status"] == "not ready"
-    assert data["failed"] == "collection-empty"
-    assert "empty" in data["detail"]
-
-
-def test_readyz_fails_when_collection_missing(client: TestClient) -> None:
-    from app.main import app
-
-    app.state.chroma_client = FakeChromaClient(heartbeat_ok=True, fail_get_collection=True)
-    app.state.redis_client = FakeRedisClient(ping_ok=True)
-
-    r = client.get("/readyz")
-    assert r.status_code == 503
-    data = r.json()
-    assert data["status"] == "not ready"
-    assert data["failed"] == "collection-empty"
-
-
-def test_readyz_fails_when_redis_down(client: TestClient) -> None:
-    from app.main import app
-
-    app.state.chroma_client = FakeChromaClient(
-        heartbeat_ok=True,
-        collection=FakeCollection(count_val=5, metadata={"embed_model": "nomic-embed-text"}),
-    )
     app.state.redis_client = FakeRedisClient(ping_ok=False)
 
     r = client.get("/readyz")
@@ -140,28 +101,96 @@ def test_readyz_fails_when_redis_down(client: TestClient) -> None:
     data = r.json()
     assert data["status"] == "not ready"
     assert data["failed"] == "redis"
-    assert "detail" in data
+
+
+# ---------------------------------------------------------------------------
+# Chroma-retriever path: tested via check_readiness() directly with
+# Settings(retriever="chroma") so the stub fast-path is not triggered.
+# ---------------------------------------------------------------------------
+
+def _chroma_settings(**kwargs: object) -> Settings:
+    """Return Settings with retriever=chroma; override other fields as needed."""
+    return Settings(retriever="chroma", embed_model="nomic-embed-text", **kwargs)  # type: ignore[arg-type]
+
+
+def test_readyz_returns_200_when_all_ready(client: TestClient) -> None:
+    settings = _chroma_settings()
+    chroma = FakeChromaClient(
+        heartbeat_ok=True,
+        collection=FakeCollection(count_val=3, metadata={"embed_model": "nomic-embed-text", "dimension": 768}),
+    )
+    redis = FakeRedisClient(ping_ok=True)
+    res = check_readiness(settings, chroma_client=chroma, redis_client=redis)
+    assert res["status"] == "ready"
+    checks = res["checks"]
+    assert isinstance(checks, dict)
+    assert checks["chroma"] == "ok"
+    assert checks["redis"] == "ok"
+    assert checks["count"] == 3
+    assert checks["embed_model"] == "nomic-embed-text"
+
+
+def test_readyz_fails_when_chroma_down(client: TestClient) -> None:
+    settings = _chroma_settings()
+    chroma = FakeChromaClient(heartbeat_ok=False)
+    redis = FakeRedisClient(ping_ok=True)
+    res = check_readiness(settings, chroma_client=chroma, redis_client=redis)
+    assert res["status"] == "not ready"
+    assert res["failed"] == "chroma"
+    assert "detail" in res
+
+
+def test_readyz_fails_when_collection_empty(client: TestClient) -> None:
+    settings = _chroma_settings()
+    chroma = FakeChromaClient(
+        heartbeat_ok=True,
+        collection=FakeCollection(count_val=0, metadata={"embed_model": "nomic-embed-text"}),
+    )
+    redis = FakeRedisClient(ping_ok=True)
+    res = check_readiness(settings, chroma_client=chroma, redis_client=redis)
+    assert res["status"] == "not ready"
+    assert res["failed"] == "collection-empty"
+    assert "empty" in str(res["detail"])
+
+
+def test_readyz_fails_when_collection_missing(client: TestClient) -> None:
+    settings = _chroma_settings()
+    chroma = FakeChromaClient(heartbeat_ok=True, fail_get_collection=True)
+    redis = FakeRedisClient(ping_ok=True)
+    res = check_readiness(settings, chroma_client=chroma, redis_client=redis)
+    assert res["status"] == "not ready"
+    assert res["failed"] == "collection-empty"
+
+
+def test_readyz_fails_when_redis_down(client: TestClient) -> None:
+    settings = _chroma_settings()
+    chroma = FakeChromaClient(
+        heartbeat_ok=True,
+        collection=FakeCollection(count_val=5, metadata={"embed_model": "nomic-embed-text"}),
+    )
+    redis = FakeRedisClient(ping_ok=False)
+    res = check_readiness(settings, chroma_client=chroma, redis_client=redis)
+    assert res["status"] == "not ready"
+    assert res["failed"] == "redis"
+    assert "detail" in res
 
 
 def test_readyz_fails_on_embedding_mismatch_and_logs_error(
     client: TestClient, caplog: pytest.LogCaptureFixture
 ) -> None:
-    from app.main import app
-
-    app.state.chroma_client = FakeChromaClient(
+    settings = _chroma_settings()
+    chroma = FakeChromaClient(
         heartbeat_ok=True,
         collection=FakeCollection(count_val=5, metadata={"embed_model": "dummy-768", "dimension": 768}),
     )
-    app.state.redis_client = FakeRedisClient(ping_ok=True)
+    redis = FakeRedisClient(ping_ok=True)
 
     with caplog.at_level(logging.ERROR):
-        r = client.get("/readyz")
+        res = check_readiness(settings, chroma_client=chroma, redis_client=redis)
 
-    assert r.status_code == 503
-    data = r.json()
-    assert data["status"] == "not ready"
-    assert data["failed"] == "embedding-pin"
-    assert "mismatch" in data["detail"]
+    assert res["status"] == "not ready"
+    assert res["failed"] == "embedding-pin"
+    assert "mismatch" in str(res["detail"])
 
     # Verify ONE JSON line / message at ERROR level
     error_logs = [record for record in caplog.records if record.levelno == logging.ERROR]
@@ -184,7 +213,7 @@ def test_healthz_untouched_and_unaffected_by_dependencies(client: TestClient) ->
 
 
 def test_direct_service_checks() -> None:
-    settings = Settings(embed_model="nomic-embed-text")
+    settings = _chroma_settings()
 
     # Chroma down
     chroma = FakeChromaClient(heartbeat_ok=False)

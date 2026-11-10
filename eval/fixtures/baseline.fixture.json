@@ -1,0 +1,16 @@
+{
+  "recall_at_3": 0.0,
+  "recall_at_5": 0.0,
+  "citation_validity": 1.0,
+  "abstention_correctness": 1.0,
+  "recall_at_5_by_type": {
+    "ordinary": 0.0,
+    "version": 0.0,
+    "exact": 0.0,
+    "injection": 0.0
+  },
+  "must_abstain_total": 1,
+  "must_abstain_correct": 1,
+  "_note": "CI baseline for the fixture golden set (k8s/overlays/ci: stub retriever, RELEVANCE_FLOOR=1.1). All non-abstain questions score 0 recall because no real Ollama index exists in CI. The gate checks only that recall does not REGRESS below this 0 baseline."
+}
+

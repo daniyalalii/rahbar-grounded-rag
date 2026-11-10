@@ -25,7 +25,53 @@ def check_readiness(
 
     Returns a dict with {"status": "ready", "checks": {...}} or
     {"status": "not ready", "failed": "...", "detail": "..."}.
+
+    When RETRIEVER=stub the API never queries Chroma, so the Chroma collection
+    check and the embedding-pin check are skipped.  Only Redis is verified.
+    This lets the CI overlay (k8s/overlays/ci) roll out the API without an
+    Ollama-backed indexer run.
     """
+    if settings.retriever == "stub":
+        # Stub retriever does not use Chroma; skip the collection check and
+        # the embedding-pin check.  Only verify that Redis is reachable.
+        if redis_client is None:
+            try:
+                import redis as _redis
+
+                redis_client = _redis.Redis(
+                    host=settings.redis_host,
+                    port=settings.redis_port,
+                    socket_timeout=timeout,
+                    socket_connect_timeout=timeout,
+                )
+            except Exception as err:
+                return {
+                    "status": "not ready",
+                    "failed": "redis",
+                    "detail": f"Could not create Redis client: {err}",
+                }
+        try:
+            if not redis_client.ping():
+                return {
+                    "status": "not ready",
+                    "failed": "redis",
+                    "detail": f"Redis ping returned False at {settings.redis_host}:{settings.redis_port}",
+                }
+        except Exception as err:
+            return {
+                "status": "not ready",
+                "failed": "redis",
+                "detail": f"Redis unreachable at {settings.redis_host}:{settings.redis_port}: {err}",
+            }
+        return {
+            "status": "ready",
+            "checks": {
+                "retriever": "stub",
+                "chroma": "skipped (stub retriever)",
+                "redis": "ok",
+            },
+        }
+
     # 1. Chroma reachable (heartbeat)
     if chroma_client is None:
         try:
