@@ -86,13 +86,22 @@ def run_pipeline(settings: IndexerSettings) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build the RAHBAR index, then exit.")
     parser.add_argument("--dummy", action="store_true", help="write three fake chunks")
+    parser.add_argument("--fetch", action="store_true", help="fetch and verify real corpus before indexing")
     args = parser.parse_args()
     settings = get_settings()
-    log("indexer starting", dummy=args.dummy, embed_model=settings.embed_model,
-        collection=settings.collection, chroma=f"{settings.chroma_host}:{settings.chroma_port}",
+    log("indexer starting", dummy=args.dummy, fetch=args.fetch or settings.fetch_corpus,
+        embed_model=settings.embed_model, collection=settings.collection,
+        chroma=f"{settings.chroma_host}:{settings.chroma_port}",
+        corpus_dir=settings.corpus_dir,
         pod=os.environ.get("HOSTNAME", "-"))
     started = time.perf_counter()
     try:
+        if args.fetch or settings.fetch_corpus:
+            from .fetch import fetch_and_verify
+            log("fetching real corpus", target_dir=settings.corpus_dir)
+            fetch_and_verify(settings.corpus_dir)
+            log("corpus fetch and verification complete")
+
         if args.dummy:
             from .dummy import write_dummy_index
             from .store import get_client
@@ -103,6 +112,9 @@ def main() -> int:
     except NotImplementedError as exc:
         log("indexer stage not implemented yet", error=str(exc))
         return 2
+    except Exception as exc:
+        log("indexer failed", error=str(exc))
+        return 1
     log("indexer finished", chunks=count, seconds=round(time.perf_counter() - started, 1))
     return 0
 

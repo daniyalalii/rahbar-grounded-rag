@@ -6,7 +6,12 @@ NS ?= rahbar
 TAG ?= dev
 PY ?= python3
 VENV ?= .venv
-BIN := $(abspath $(VENV))/bin
+# Determine script directory based on OS
+ifeq ($(OS),Windows_NT)
+  BIN := $(VENV)\\Scripts
+else
+  BIN := $(abspath $(VENV))/bin
+endif
 # The Ingress address. On Linux this is the minikube IP. On macOS or Windows with the
 # docker driver, run `minikube tunnel` in another terminal and use INGRESS_IP=127.0.0.1.
 INGRESS_IP ?= $(shell minikube ip 2>/dev/null)
@@ -20,8 +25,8 @@ help: ## list the targets
 
 install: ## create .venv and install the api, indexer and tool dependencies
 	$(PY) -m venv $(VENV)
-	$(BIN)/pip install -q --upgrade pip
-	$(BIN)/pip install -q -r api/requirements-dev.txt -r indexer/requirements-dev.txt
+	$(BIN)\\python -m pip install -q --upgrade pip
+	$(BIN)\\python -m pip install -q -r api/requirements-dev.txt -r indexer/requirements-dev.txt
 
 test: ## run the api and indexer tests (stubs only: no cluster, no model, no network)
 	cd api && $(BIN)/pytest -q

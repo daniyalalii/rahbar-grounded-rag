@@ -1,4 +1,34 @@
-﻿apiVersion: kustomize.config.k8s.io/v1beta1
+apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
+
+patches:
+  - target:
+      kind: Job
+      name: indexer
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/args
+        value: ["python", "-m", "pipeline.run", "--fetch"]
+      - op: add
+        path: /spec/template/spec/containers/0/env
+        value:
+          - name: FETCH_CORPUS
+            value: "true"
+          - name: CORPUS_DIR
+            value: "/tmp/corpus"
+  - target:
+      kind: CronJob
+      name: reindex
+    patch: |-
+      - op: replace
+        path: /spec/jobTemplate/spec/template/spec/containers/0/args
+        value: ["python", "-m", "pipeline.run", "--fetch"]
+      - op: add
+        path: /spec/jobTemplate/spec/template/spec/containers/0/env
+        value:
+          - name: FETCH_CORPUS
+            value: "true"
+          - name: CORPUS_DIR
+            value: "/tmp/corpus"

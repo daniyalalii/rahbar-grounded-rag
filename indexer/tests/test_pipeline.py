@@ -143,11 +143,21 @@ def test_extract_md_reads_front_matter_version(tmp_path: Path) -> None:
     assert doc.superseded is False
 
 
-def test_extract_non_md_raises(tmp_path: Path) -> None:
-    pdf = tmp_path / "file.pdf"
-    pdf.write_bytes(b"%PDF-1.4")
-    with pytest.raises(NotImplementedError):
-        extract(str(pdf), "2026", False)
+def test_extract_unsupported_format_raises(tmp_path: Path) -> None:
+    doc_file = tmp_path / "file.docx"
+    doc_file.write_bytes(b"PK\x03\x04")
+    with pytest.raises(ValueError):
+        extract(str(doc_file), "2026", False)
+
+
+def test_extract_html_file(tmp_path: Path) -> None:
+    html_file = tmp_path / "page.html"
+    html_file.write_text("<h1>Fee Structure</h1><table><tr><th>Item</th><th>Fee</th></tr><tr><td>Tuition</td><td>1000</td></tr></table>", encoding="utf-8")
+    doc = extract(str(html_file), "2026", False)
+    assert doc.source == "page.html"
+    assert len(doc.pages) == 1
+    assert "Fee Structure" in doc.pages[0].text
+    assert "Tuition" in doc.pages[0].text
 
 
 def test_extract_fixture_superseded(tmp_path: Path) -> None:

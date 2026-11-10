@@ -62,4 +62,19 @@ def store(chunks: list[Chunk], vectors: list[list[float]], settings: IndexerSett
             metadatas=[c.metadata() for c in batch],
         )
 
+    # Invalidate semantic cache in Redis after rebuilding the index so stale answers are never served
+    try:
+        import redis
+        r = redis.Redis(host=settings.redis_host, port=settings.redis_port, socket_timeout=1.0)
+        try:
+            r.incr(f"rahbar:cache:{settings.collection}:gen")
+        except Exception:
+            pass
+        prefix = f"rahbar:cache:{settings.collection}:*"
+        keys: Any = r.keys(prefix)
+        if keys:
+            r.delete(*keys)
+    except Exception:
+        pass  # Redis may be offline or in a test harness
+
     return int(collection.count())

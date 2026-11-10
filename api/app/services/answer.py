@@ -1,6 +1,6 @@
 """Turns a question into an AskResponse. This is where the query pipeline lives.
 
-Implements relevance floor gating (honest abstention without calling LLM),
+Implements semantic caching via Redis, relevance floor gating (honest abstention),
 prompt building with untrusted data delimiters, model response validation
 with one retry, safe fallback, and citation validation against retrieved chunks.
 """
@@ -14,6 +14,7 @@ from ..logjson import request_id_var
 from ..providers.llm.base import LLMProvider
 from ..retrieval.base import Retriever
 from ..schemas import Answer, AskResponse, Citation, RetrievedRef
+from .cache import SemanticCache
 from .prompt import build_prompt
 
 log = logging.getLogger("rahbar.answer")
@@ -30,9 +31,39 @@ ABSTENTION_MESSAGE = "The corpus does not cover this."
 
 
 def answer_question(
-    question: str, retriever: Retriever, provider: LLMProvider, settings: Settings
+    question: str,
+    retriever: Retriever,
+    provider: LLMProvider,
+    settings: Settings,
+    cache: SemanticCache | None = None,
+    is_followup: bool = False,
 ) -> AskResponse:
     """Execute the full RAG query pipeline for a question."""
+    # 0. Semantic cache check (if enabled and question vector available)
+    cache_instance = cache or SemanticCache(settings)
+    initial_gen = cache_instance.get_generation() if hasattr(cache_instance, "get_generation") else None
+    question_vec: list[float] | None = None
+
+    if hasattr(retriever, "_embed"):
+        try:
+            question_vec = retriever._embed(question)  # type: ignore
+        except Exception:
+            question_vec = None
+
+    if question_vec:
+        cached_hit = cache_instance.check_hit(question_vec, is_followup=is_followup)
+        if cached_hit is not None:
+            # Overwrite request_id to preserve tracing for the current request
+            return AskResponse(
+                request_id=request_id_var.get(),
+                answer=cached_hit.answer,
+                citations=cached_hit.citations,
+                answered_from_context=cached_hit.answered_from_context,
+                confidence=cached_hit.confidence,
+                retrieved=cached_hit.retrieved,
+                provider="semantic-cache",
+            )
+
     passages = retriever.retrieve(question, k=settings.top_k)
 
     # 1. Relevance floor & honest abstention without calling the LLM
@@ -88,7 +119,9 @@ def answer_question(
                 answer = SAFE_CANNED_ANSWER
 
     if answer is None:
-        answer = SAFE_CANNED_ANSWER
+        # Use fallback answer when LLM validation fails
+        fallback_answer = SAFE_CANNED_ANSWER
+        answer = fallback_answer
 
     # 4. Drop any citation that does not match a retrieved chunk
     retrieved_pairs = {(p.source.strip().lower(), p.section.strip().lower()) for p in passages}
@@ -116,7 +149,7 @@ def answer_question(
         },
     )
 
-    return AskResponse(
+    response = AskResponse(
         request_id=request_id_var.get(),
         answer=answer.answer,
         citations=valid_citations,
@@ -134,3 +167,11 @@ def answer_question(
         ],
         provider=provider.name,
     )
+
+    # 5. Store in semantic cache if eligible
+    if question_vec:
+        cache_instance.store(
+            question, question_vec, response, is_followup=is_followup, generation=initial_gen
+        )
+
+    return response

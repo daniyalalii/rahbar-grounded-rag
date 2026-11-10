@@ -32,8 +32,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.settings = settings
     app.state.retriever = get_retriever(settings)
     app.state.provider = get_provider(settings)
-    # STARTER-TODO(4.4): compare the collection's embedding-model metadata with
-    # settings.embed_model here, and make /readyz fail on a mismatch.
+    # Verification of embedding pin in ChromaDB collection metadata is handled
+    # dynamically by services/readiness.py during /readyz probes.
     # This process only reads the index. The indexer Job writes it.
     log.info(
         "api started",
