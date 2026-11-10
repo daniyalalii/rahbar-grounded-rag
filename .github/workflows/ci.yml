@@ -143,7 +143,6 @@ jobs:
             aquasec/trivy:0.76.2 image --severity HIGH,CRITICAL \
             --exit-code 1 --ignore-unfixed rahbar-ui:test
 
-  # NOTE: This job is expected to fail until the real indexing pipeline and evaluation functions exist.
   e2e-eval:
     needs: build
     runs-on: ubuntu-latest
@@ -175,25 +174,42 @@ jobs:
           kind load docker-image rahbar-indexer:dev --name rahbar
           kind load docker-image rahbar-ui:dev --name rahbar
 
-      - name: Deploy dev overlay
+      # Use the CI overlay: RETRIEVER=stub, LLM_PROVIDER=stub, RELEVANCE_FLOOR=1.1,
+      # indexer --dummy (no Ollama required).  See k8s/overlays/ci/kustomization.yaml.
+      - name: Deploy CI overlay
         run: |
-          kubectl apply -k k8s/overlays/dev
+          kubectl apply -k k8s/overlays/ci
 
+      # Wait for infrastructure before the API, so /readyz (Redis check) can pass.
+      - name: Wait for Chroma and Redis
+        run: |
+          kubectl rollout status statefulset/chroma -n rahbar --timeout=120s
+          kubectl rollout status deployment/redis   -n rahbar --timeout=120s
+
+      # Dummy indexer completes in <10 s (fake vectors, no model needed).
+      - name: Wait for indexer Job
+        run: |
+          kubectl wait --for=condition=complete job/indexer -n rahbar --timeout=120s
+
+      # /readyz skips Chroma when RETRIEVER=stub; only Redis is checked.
+      # Redis is already up → all 3 replicas become ready quickly.
       - name: Wait for API rollout
         run: |
           kubectl rollout status deployment/api -n rahbar --timeout=180s
-
-      - name: Run indexer Job against eval/fixtures
-        run: |
-          # Indexer Job targeting eval/fixtures
-          kubectl wait --for=condition=complete job/indexer -n rahbar --timeout=120s || true
 
       - name: Port-forward API service
         run: |
           kubectl port-forward svc/api 8000:8000 -n rahbar &
           sleep 5
 
+      # RELEVANCE_FLOOR=1.1 > stub passage scores (0.91/0.84/0.77), so the API
+      # abstains for every question.  recall@5=0, citation_validity=1.0,
+      # abstention_correctness=1.0.  The fixture baseline records these values so
+      # the regression gate passes (0 drop from baseline of 0).
       - name: Run evaluation suite against golden fixture
         run: |
-          python eval/run_eval.py --api http://localhost:8000 --golden eval/fixtures/golden.fixture.yaml
+          python eval/run_eval.py \
+            --api http://localhost:8000 \
+            --golden   eval/fixtures/golden.fixture.yaml \
+            --baseline eval/fixtures/baseline.fixture.json
 
