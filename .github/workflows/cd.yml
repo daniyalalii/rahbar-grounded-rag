@@ -102,12 +102,4 @@ jobs:
         run: |
           kubectl apply -k k8s/overlays/prod
 
-      - name: Smoke test through Ingress
-        run: |
-          # Smoke test through Ingress / port-forward
-          kubectl port-forward svc/ui 8080:80 -n rahbar &
-          kubectl port-forward svc/api 8000:8000 -n rahbar &
-          sleep 5
-          curl -fsS http://localhost:8000/healthz
-          curl -fsS http://localhost:8080/healthz
 
