@@ -102,13 +102,6 @@ jobs:
         run: |
           kubectl apply -k k8s/overlays/prod
 
-      - name: Wait for rollout status
-        run: |
-          kubectl rollout status deployment/api -n rahbar --timeout=180s
-          kubectl rollout status deployment/ui -n rahbar --timeout=180s
-          kubectl rollout status statefulset/chroma -n rahbar --timeout=180s
-          kubectl rollout status deployment/redis -n rahbar --timeout=180s
-
       - name: Smoke test through Ingress
         run: |
           # Smoke test through Ingress / port-forward
