@@ -21,7 +21,6 @@ import os
 import re
 import shutil
 import time
-import unicodedata
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Optional
