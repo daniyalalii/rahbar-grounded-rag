@@ -20,8 +20,10 @@ log = logging.getLogger("rahbar.providers.ollama")
 
 
 def _clean_json_content(content: str) -> str:
-    """Strip markdown code fence wrapper if present."""
+    """Strip think blocks, markdown fences, and extract JSON object."""
     text = content.strip()
+    if "<think>" in text and "</think>" in text:
+        text = text[text.find("</think>") + len("</think>") :].strip()
     if text.startswith("```"):
         first_newline = text.find("\n")
         if first_newline != -1:
@@ -29,6 +31,11 @@ def _clean_json_content(content: str) -> str:
         if text.rstrip().endswith("```"):
             last_fence = text.rfind("```")
             text = text[:last_fence]
+        text = text.strip()
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        text = text[start : end + 1]
     return text.strip()
 
 
@@ -43,19 +50,36 @@ class OllamaProvider:
     def generate(self, question: str, passages: list[Passage]) -> Answer:
         """Call Ollama /api/chat with format=json and the Answer schema."""
         prompt = build_prompt(question, passages)
-        schema = Answer.model_json_schema()
         url = f"{self.settings.ollama_url.rstrip('/')}/api/chat"
+
+        example_structure = {
+            "reasoning": "brief explanation from the passages",
+            "answer": "clear direct answer",
+            "citations": [
+                {
+                    "source": passages[0].source if passages else "doc.pdf",
+                    "section": passages[0].section if passages else "Section",
+                    "page": passages[0].page if passages else 1,
+                }
+            ],
+            "answered_from_context": True,
+            "confidence": "high",
+        }
+
+        content_prompt = (
+            "You are RAHBAR, an academic guidance assistant for FAST-NUCES students.\n"
+            "Answer the question using ONLY the provided passages.\n"
+            "You MUST respond with a single valid JSON object strictly matching this schema structure:\n"
+            f"{json.dumps(example_structure, indent=2)}\n"
+            "CRITICAL: Do NOT echo schema types or definitions. Provide real answer values in the JSON fields."
+        )
 
         payload: dict[str, Any] = {
             "model": self.settings.llm_model,
             "messages": [
                 {
                     "role": "system",
-                    "content": (
-                        "You are RAHBAR, an academic guidance assistant. "
-                        "You MUST respond with a valid JSON object strictly matching this schema:\n"
-                        f"{json.dumps(schema)}"
-                    ),
+                    "content": content_prompt,
                 },
                 {"role": "user", "content": prompt},
             ],
@@ -66,10 +90,11 @@ class OllamaProvider:
             "stream": False,
         }
 
+        timeout = 180.0
         if self._client is not None:
-            response = self._client.post(url, json=payload, timeout=60.0)
+            response = self._client.post(url, json=payload, timeout=timeout)
         else:
-            response = httpx.post(url, json=payload, timeout=60.0)
+            response = httpx.post(url, json=payload, timeout=timeout)
 
         response.raise_for_status()
         data = response.json()
