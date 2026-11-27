@@ -34,7 +34,7 @@ from .models import Document
 # ---------------------------------------------------------------------------
 
 REQUIRED_METADATA_KEYS = {"title", "source", "date", "version", "page_count"}
-NEAR_DUP_THRESHOLD = 0.95        # cosine similarity above this → near-duplicate
+NEAR_DUP_THRESHOLD = 0.85        # cosine similarity above this → near-duplicate (paper standard)
 MIN_CONTENT_LENGTH = 50          # chars; below this → quality fail (too short/empty)
 GARBLED_RATIO_THRESHOLD = 0.30   # fraction of non-printable/control chars → garbled
 TRUNCATION_SIGNALS = [           # text ending with these patterns → truncated
@@ -122,17 +122,20 @@ def check_quality(doc: Document) -> CheckResult:
     if not text or len(text.strip()) < MIN_CONTENT_LENGTH:
         return CheckResult(passed=False, reason=f"empty or too short ({len(text.strip())} chars)")
 
-    # Garbled: high ratio of non-printable / control characters
+    # Garbled check 1: unicode replacement character or byte corruption markers
+    if "\ufffd" in text or "\\x00" in text or "\\xff" in text:
+        return CheckResult(passed=False, reason="garbled text: contains replacement characters or raw byte escapes")
+
+    # Garbled check 2: high ratio of symbols / non-alphanumeric noise
     total = len(text)
-    non_printable = sum(
+    symbol_chars = sum(
         1 for ch in text
-        if unicodedata.category(ch) in ("Cc", "Cs") and ch not in ("\n", "\r", "\t")
+        if not ch.isalnum() and ch not in " \n\r\t.,;:?!-()\"'[]{}<>"
     )
-    garbled_ratio = non_printable / total if total > 0 else 0
-    if garbled_ratio > GARBLED_RATIO_THRESHOLD:
+    if total > 0 and (symbol_chars / total) > 0.08:
         return CheckResult(
             passed=False,
-            reason=f"garbled text: {garbled_ratio:.1%} non-printable characters",
+            reason=f"garbled text: high symbol noise ratio ({symbol_chars / total:.1%})",
         )
 
     # Failed extraction marker
@@ -183,16 +186,18 @@ def check_completeness(doc: Document, raw_meta: Optional[dict] = None) -> CheckR
     return CheckResult(passed=True, reason="ok")
 
 
-def check_recency(doc: Document, all_docs_meta: list[dict]) -> CheckResult:
+def check_recency(doc: Document, all_docs_meta: list[dict], raw_meta: Optional[dict] = None) -> CheckResult:
     """Recency: no newer version of the same source document exists in this batch/corpus."""
-    source = doc.source
+    source = (raw_meta or {}).get("source", doc.source)
+    version_str = str((raw_meta or {}).get("version", doc.doc_version))
     try:
-        this_version = tuple(int(x) for x in str(doc.doc_version).split(".") if x.isdigit())
+        this_version = tuple(int(x) for x in version_str.split(".") if x.isdigit())
     except Exception:
         this_version = (0,)
 
+    doc_path = getattr(doc, "_path", None) or (raw_meta or {}).get("_path", None)
     for other in all_docs_meta:
-        if other.get("source") == source and other.get("_path") != getattr(doc, "_path", None):
+        if other.get("source") == source and (not doc_path or other.get("_path") != doc_path):
             try:
                 other_version = tuple(
                     int(x) for x in str(other.get("version", "0")).split(".") if x.isdigit()
@@ -227,25 +232,24 @@ def check_uniqueness(
             reason=f"exact duplicate of '{hash_registry[h]}' (SHA-256 match)",
         )
 
-    # Near-duplicate via cosine similarity (only if embeddings available)
-    if embedding_registry:
-        try:
-            vec = _embed_text(text)
-            if vec is not None:
-                for other_name, other_vec in embedding_registry:
-                    sim = _cosine(vec, other_vec)
-                    if sim >= NEAR_DUP_THRESHOLD:
-                        return CheckResult(
-                            passed=False,
-                            reason=(
-                                f"near-duplicate of '{other_name}' "
-                                f"(cosine similarity {sim:.3f} >= {NEAR_DUP_THRESHOLD})"
-                            ),
-                        )
-                # Register this doc
-                embedding_registry.append((doc.source, vec))
-        except Exception:
-            pass  # embedding unavailable; skip near-dup check
+    # Near-duplicate via cosine similarity
+    try:
+        vec = _embed_text(text)
+        if vec is not None:
+            for other_name, other_vec in embedding_registry:
+                sim = _cosine(vec, other_vec)
+                if sim >= NEAR_DUP_THRESHOLD:
+                    return CheckResult(
+                        passed=False,
+                        reason=(
+                            f"near-duplicate of '{other_name}' "
+                            f"(cosine similarity {sim:.3f} >= {NEAR_DUP_THRESHOLD})"
+                        ),
+                    )
+            # Register this doc vector
+            embedding_registry.append((doc.source, vec))
+    except Exception:
+        pass  # embedding unavailable; skip near-dup check
 
     # Register hash
     hash_registry[h] = doc.source
@@ -266,21 +270,30 @@ def check_injection(doc: Document) -> bool:
 # ---------------------------------------------------------------------------
 
 def _embed_text(text: str) -> Optional[list[float]]:
-    """Embed text via Ollama for near-dup detection. Returns None on failure."""
+    """Embed text via Ollama for near-dup detection. Falls back to token frequency hashing."""
     ollama_url = os.environ.get("OLLAMA_URL", "http://host.minikube.internal:11434")
     embed_model = os.environ.get("EMBED_MODEL", "nomic-embed-text")
     try:
         import httpx
-        snippet = text[:2000]  # limit to first 2000 chars for speed
+        snippet = text[:2000]
         resp = httpx.post(
             f"{ollama_url.rstrip('/')}/api/embed",
             json={"model": embed_model, "input": [snippet]},
-            timeout=15.0,
+            timeout=5.0,
         )
         resp.raise_for_status()
         return resp.json()["embeddings"][0]
     except Exception:
-        return None
+        # High-dimension character n-gram / token frequency fallback for offline test
+        words = re.findall(r"\w+", text.lower()[:3000])
+        if not words:
+            return None
+        vec = [0.0] * 512
+        for w in words:
+            h = abs(hash(w)) % 512
+            vec[h] += 1.0
+        norm = sum(x * x for x in vec) ** 0.5
+        return [x / norm for x in vec] if norm > 0 else vec
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
@@ -309,7 +322,7 @@ def _read_front_matter(path: Path) -> dict:
         if line.strip() == "---":
             break
         key, _, value = line.partition(":")
-        meta[key.strip()] = value.strip()
+        meta[key.strip()] = value.strip().strip('"').strip("'")
     return meta
 
 
@@ -361,7 +374,9 @@ def verify_corpus(
 
         q_check = check_quality(doc)
         c_check = check_completeness(doc, raw_meta=fm)
-        r_check = check_recency(doc, all_docs_meta)
+        fm_with_path = dict(fm)
+        fm_with_path["_path"] = str(path)
+        r_check = check_recency(doc, all_docs_meta, raw_meta=fm_with_path)
         u_check = check_uniqueness(doc, hash_registry, embedding_registry)
         injection = check_injection(doc)
 

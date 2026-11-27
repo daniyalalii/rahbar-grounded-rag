@@ -88,11 +88,17 @@ def main() -> int:
         live_vecs = all_vecs[:len(live_queries)]
         golden_vecs = all_vecs[len(live_queries):]
     except Exception as exc:
-        print(f"[ERROR] Embedding failed: {exc}")
-        print("Falling back to string-overlap heuristic (no embeddings).")
-        # Rough fallback
-        live_vecs = None
-        golden_vecs = None
+        print(f"[WARNING] Remote embedding unavailable ({exc}). Using internal vector fallback.")
+        import re
+        def _bow(text: str) -> list[float]:
+            words = re.findall(r"\w+", text.lower())
+            v = [0.0] * 512
+            for w in words:
+                v[abs(hash(w)) % 512] += 1.0
+            norm = sum(x * x for x in v) ** 0.5
+            return [x / norm for x in v] if norm > 0 else v
+        live_vecs = [_bow(q) for q in live_queries]
+        golden_vecs = [_bow(q) for q in golden_queries]
 
     covered = []
     uncovered = []

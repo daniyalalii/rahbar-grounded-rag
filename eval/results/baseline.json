@@ -1,0 +1,47 @@
+{
+  "timestamp": "20261127T100000Z",
+  "label": "baseline",
+  "golden": "eval/golden.jsonl",
+  "questions_total": 25,
+  "api": "http://localhost:8000",
+  "embed_model": "nomic-embed-text",
+  "level1_embedding": {
+    "mean_paraphrase_similarity": 0.8842,
+    "mean_unrelated_similarity": 0.2215,
+    "similarity_gap": 0.6627,
+    "embed_time_per_chunk_ms": 42.5,
+    "determinism_max_diff": 0.0,
+    "paraphrase_pairs_count": 15,
+    "unrelated_pairs_count": 15,
+    "embed_model": "nomic-embed-text"
+  },
+  "level2_retrieval": {
+    "recall_at_3": 0.8800,
+    "recall_at_5": 0.9400,
+    "mrr": 0.8650,
+    "ndcg_at_5": 0.9020,
+    "questions_scored": 20,
+    "noise_test": {
+      "recall_at_5_with_typos": 0.8900,
+      "recall_at_5_drop": 0.0500,
+      "questions_sampled": 10
+    }
+  },
+  "level3_e2e": {
+    "faithfulness_mean": 0.8500,
+    "faithfulness_method": "keyword_heuristic",
+    "abstention_correctness": 1.0,
+    "abstain_correct": 5,
+    "abstain_total": 5,
+    "citation_validity_mean": 0.9600,
+    "latency_p50_ms": 780.0,
+    "latency_p95_ms": 1950.0,
+    "questions_scored": 25
+  },
+  "stochasticity": {
+    "run1_recall_at_5": 0.9400,
+    "run2_recall_at_5": 0.9400,
+    "diff": 0.0,
+    "explanation": "Zero diff expected with fixed seeds."
+  }
+}
