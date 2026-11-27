@@ -68,6 +68,7 @@ def run_pipeline(settings: IndexerSettings) -> int:
     from .clean import clean
     from .embed import embed
     from .extract import extract
+    from .models import Document
     from .store import store_incremental
     from .verify import verify_corpus
 
@@ -77,7 +78,7 @@ def run_pipeline(settings: IndexerSettings) -> int:
 
     # --- Stage 1b: Verification (RAGOps 4.2.1-4.2.4) ---
     # Extract all docs first so verify can compare them against each other
-    extracted: list[tuple[Path, object]] = []
+    extracted: list[tuple[Path, Document]] = []
     for path, doc_version, superseded in documents:
         doc = clean(extract(str(path), doc_version, superseded))
         extracted.append((path, doc))
