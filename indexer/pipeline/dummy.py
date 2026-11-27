@@ -50,7 +50,7 @@ def write_dummy_index(settings: IndexerSettings, client: Any) -> int:
         pass
     collection = client.create_collection(
         name=settings.collection,
-        metadata={"hnsw:space": "cosine", "embed_model": settings.embed_model, "dimension": DUMMY_DIM},
+        metadata={"hnsw:space": "cosine", "embed_model": DUMMY_MODEL, "dimension": DUMMY_DIM},
     )
     collection.add(
         ids=[c.id for c in DUMMY_CHUNKS],
