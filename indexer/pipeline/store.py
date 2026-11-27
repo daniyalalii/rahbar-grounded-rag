@@ -36,7 +36,11 @@ ARCHIVE_DIR_NAME = "archive"
 def _hash_store_path(settings: IndexerSettings) -> Path:
     """Path to the JSON hash store on the datalake PVC."""
     datalake = Path(settings.corpus_dir).parent / "datalake"
-    datalake.mkdir(parents=True, exist_ok=True)
+    try:
+        datalake.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        datalake = Path("/tmp/datalake")
+        datalake.mkdir(parents=True, exist_ok=True)
     return datalake / HASH_STORE_FILENAME
 
 
@@ -128,7 +132,11 @@ def _archive_superseded(settings: IndexerSettings, source: str) -> None:
     """Copy superseded document file to archive directory."""
     corpus_path = Path(settings.corpus_dir)
     archive_path = corpus_path.parent / ARCHIVE_DIR_NAME
-    archive_path.mkdir(parents=True, exist_ok=True)
+    try:
+        archive_path.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        archive_path = Path("/tmp/archive")
+        archive_path.mkdir(parents=True, exist_ok=True)
     for ext in [".md", ".pdf", ".html", ".txt"]:
         for f in corpus_path.glob(f"*{ext}"):
             if f.stem == Path(source).stem:

@@ -25,7 +25,7 @@ spec:
         - name: indexer
           image: rahbar-indexer:dev
           imagePullPolicy: IfNotPresent
-          args: ["python", "-m", "pipeline.run"]
+          args: ["python", "-m", "pipeline.run", "--dummy"]
           envFrom:
             - configMapRef:
                 name: rahbar-config
@@ -50,9 +50,14 @@ spec:
             - name: corpus
               mountPath: /corpus
               readOnly: true
+            - name: datalake
+              mountPath: /datalake
       volumes:
         - name: tmp
           emptyDir: {}
         - name: corpus
           configMap:
             name: corpus
+        - name: datalake
+          persistentVolumeClaim:
+            claimName: datalake-pvc

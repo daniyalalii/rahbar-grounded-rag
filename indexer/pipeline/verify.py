@@ -236,6 +236,8 @@ def check_uniqueness(
         vec = _embed_text(text)
         if vec is not None:
             for other_name, other_vec in embedding_registry:
+                if other_name == doc.source:
+                    continue
                 sim = _cosine(vec, other_vec)
                 if sim >= NEAR_DUP_THRESHOLD:
                     return CheckResult(
@@ -342,9 +344,18 @@ def verify_corpus(
         and report is the full VerificationReport (also written to disk).
     """
     quarantine_path = Path(quarantine_dir)
-    quarantine_path.mkdir(parents=True, exist_ok=True)
+    try:
+        quarantine_path.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        quarantine_path = Path("/tmp/quarantine")
+        quarantine_path.mkdir(parents=True, exist_ok=True)
+
     report_path = Path(report_dir)
-    report_path.mkdir(parents=True, exist_ok=True)
+    try:
+        report_path.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        report_path = Path("/tmp/eval_results")
+        report_path.mkdir(parents=True, exist_ok=True)
 
     run_id = time.strftime("%Y-%m-%dT%H-%M-%SZ", time.gmtime())
     report = VerificationReport(

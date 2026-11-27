@@ -24,6 +24,10 @@ configMapGenerator:
       - corpus/academic-rules-2023.md
       - corpus/academic-rules-2026.md
       - corpus/fees-2026.md
+  - name: eval-scripts
+    files:
+      - eval/run_eval_ragops.py
+      - eval/golden.jsonl
 
 generatorOptions:
   disableNameSuffixHash: true

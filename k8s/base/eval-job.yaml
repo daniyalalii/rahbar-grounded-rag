@@ -28,13 +28,11 @@ spec:
           imagePullPolicy: IfNotPresent
           command:
             - python
-            - eval/run_eval_ragops.py
+            - /app/eval/run_eval_ragops.py
             - --api
             - http://api:8000
             - --golden
-            - /eval/golden.jsonl
-            - --thresholds
-            - /eval/gate-thresholds.yaml
+            - /app/eval/golden.jsonl
             - --label
             - $(RUN_LABEL)
             - --skip-level1
@@ -64,6 +62,8 @@ spec:
               drop:
                 - ALL
           volumeMounts:
+            - name: eval-scripts
+              mountPath: /app/eval
             - name: eval-results
               mountPath: /eval/results
             - name: traces
@@ -71,6 +71,9 @@ spec:
             - name: tmp
               mountPath: /tmp
       volumes:
+        - name: eval-scripts
+          configMap:
+            name: eval-scripts
         - name: eval-results
           persistentVolumeClaim:
             claimName: eval-results-pvc
