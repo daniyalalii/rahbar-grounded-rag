@@ -579,7 +579,19 @@ def test_config_switch_retriever_and_llm_provider(monkeypatch: pytest.MonkeyPatc
     assert prov.name == "ollama-host"
 
     # Verify get_retriever instantiates ChromaRetriever (pass fake client to avoid real connection)
-    monkeypatch.setattr("chromadb.HttpClient", lambda **kw: FakeChromaClient())
+    import importlib.util
+    if importlib.util.find_spec("chromadb") is not None:
+        monkeypatch.setattr("chromadb.HttpClient", lambda **kw: FakeChromaClient())
+    else:
+        import sys
+        import types
+        fake_chroma_mod = types.ModuleType("chromadb")
+        fake_chroma_mod.HttpClient = lambda **kw: FakeChromaClient()  # type: ignore[attr-defined]
+        fake_config_mod = types.ModuleType("chromadb.config")
+        fake_config_mod.Settings = lambda **kw: None  # type: ignore[attr-defined]
+        fake_chroma_mod.config = fake_config_mod  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "chromadb", fake_chroma_mod)
+        monkeypatch.setitem(sys.modules, "chromadb.config", fake_config_mod)
     ret = get_retriever(s)
     assert isinstance(ret, ChromaRetriever)
     assert ret.name == "chroma"
