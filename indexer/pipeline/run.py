@@ -68,19 +68,61 @@ def run_pipeline(settings: IndexerSettings) -> int:
     from .clean import clean
     from .embed import embed
     from .extract import extract
-    from .store import store
+    from .store import store_incremental
+    from .verify import verify_corpus
 
     documents = discover(settings.corpus_dir)
     if not documents:
         raise SystemExit(f"no documents found in {settings.corpus_dir}")
-    all_chunks: list[Chunk] = []
+
+    # --- Stage 1b: Verification (RAGOps 4.2.1-4.2.4) ---
+    # Extract all docs first so verify can compare them against each other
+    extracted: list[tuple[Path, object]] = []
     for path, doc_version, superseded in documents:
         doc = clean(extract(str(path), doc_version, superseded))
+        extracted.append((path, doc))
+
+    quarantine_dir = str(Path(settings.corpus_dir).parent / "quarantine")
+    report_dir = str(Path(settings.corpus_dir).parent.parent / "eval" / "results")
+    passed_docs, report = verify_corpus(extracted, quarantine_dir, report_dir)
+    log(
+        "verification complete",
+        total=report.total,
+        passed=report.passed,
+        quarantined=report.quarantined,
+    )
+    for r in report.documents:
+        if not r.overall_passed:
+            failed_checks = [
+                k for k in ("quality", "completeness", "recency", "uniqueness")
+                if not getattr(r, k).passed
+            ]
+            log(
+                "quarantined",
+                file=r.file,
+                failed_checks=failed_checks,
+                injection=r.injection_detected,
+            )
+
+    if not passed_docs:
+        log("no documents passed verification; nothing to index")
+        return 0
+
+    # --- Stages 2-4: Chunk, Embed for verified docs only ---
+    all_chunks: list[Chunk] = []
+    for path, doc in passed_docs:
         pieces = chunk(doc, settings.chunk_size, settings.chunk_overlap)
         log("chunked", source=path.name, chunks=len(pieces))
         all_chunks.extend(pieces)
+
+    if not all_chunks:
+        log("no chunks produced")
+        return 0
+
     vectors = embed([c.text for c in all_chunks], settings)
-    return store(all_chunks, vectors, settings)
+
+    # --- Stage 5: Incremental store (hash-based, no orphans) ---
+    return store_incremental(all_chunks, vectors, settings)
 
 
 def main() -> int:

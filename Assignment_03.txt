@@ -1,0 +1,181 @@
+National University
+of Computer & Emerging Sciences, Islamabad
+Department of Software Engineering
+(Software Construction and Development, CS4032)
+Assignment 03 - RAGOps
+Semester: Fall 26 (CS4032)
+Section: All
+Group size: 2 students
+Marks: 185
+Reference paper: Xu, Weytjens, Zhang, Lu, Weber and Zhu, RAGOps: Operating and Managing Retrieval-
+Augmented Generation Pipelines (preprint, 2026).
+Instructions
+Read the instructions very carefully.
+Late submissions will receive zero marks.
+Plagiarism may result in zero marks in the whole assignments category (all assignments) regardless of
+the percentage plagiarized.
+There will be no credit if the given requirements are changed.
+This is a group assignment. Both members must be able to explain every part of the work at the
+demo.
+AI tools and libraries are allowed. Every number in your report must come from runs of your
+own pipeline, and the result files must be committed to your repository.
+The pipeline must be deployed on Kubernetes during the demo. If it is run on Docker containers
+only (for example plain docker run or Docker Compose), the demo will receive 0.
+You will build on your RAHBAR pipeline from Assignment 02. If your group has a different working
+RAG pipeline (document ingestion, a vector store, a retriever and an LLM generator), you may use it
+instead. The pipeline must run on Kubernetes (minikube is fine) for Part F.
+Read the paper before you start. Sections 3.2, 4.2, Table 1, Table 2, 5.1 and 6.2 matter most. Figure 3
+is the map of this assignment.
+Submission Guidelines
+Repository: the URL of your group's GitHub repository. Commits must come from both members.
+Report: one PDF, at most 8 pages, with the screenshots listed under Submission added as an appendix
+(the appendix does not count towards the 8 pages). The first page lists the names and roll numbers of
+Page | 1
+both members.
+Results: all result files, trace samples and reports produced by your scripts are committed under
+eval/results/ and traces/. All Kubernetes manifests are committed under k8s/.
+README: the repository README gives the exact command to run each part (A to F).
+Demo: both members attend and bring a laptop with the pipeline running on your local Kubernetes
+cluster. Running only on Docker containers gives 0 for the demo. During the demo you will run your
+evaluation as a Kubernetes Job, open a trace, and ingest a small batch of documents you have not seen
+by running your ingestion Job.
+Tasks Overview
+The paper argues that a RAG system needs two intertwined lifecycles: the usual software lifecycle for the
+query pipeline, and a data management lifecycle (ingest, verify, update the data lake, update the retrieval
+sources) that is tested against its own evolving data. Your task is to add this "RAGOps layer" to your
+pipeline. You will verify and update the data, test the pipeline at three levels, gate a pipeline change behind
+those tests, trace and monitor every query, and check that your tests still match real usage. All of this runs
+on Kubernetes: ingestion and evaluation are Jobs, the data and results live on persistent volumes, thresholds
+are ConfigMaps, and a pipeline change is released with a controlled rollout.
+Deliverable
+Part A: Data management: verify and update (paper 4.2.1 to 4.2.4)
+A1. Verification stage. Add a step that runs after ingestion and before chunking. For every document
+it records pass or fail, with a reason, for each of four checks: quality (empty, garbled or failed
+extraction), completeness (required metadata present: source, title, date or version, page count; text
+not truncated), recency (a newer version of the same document is detected), and uniqueness (exact
+duplicates by hash, near-duplicates by embedding similarity).
+Documents that fail are moved to a quarantine folder and are not indexed. The output is a verification
+report file per run.
+A2. Incremental update. Re-running ingestion on an unchanged corpus must embed zero chunks
+(show the counts). A changed document replaces only its own chunks. A deleted document leaves no
+orphan chunks in the vector store (prove it with a count by document id). A superseded version is
+archived and excluded from retrieval through metadata, and you can restore it (rollback demo).
+Batch B. Create a second batch of at least 10 documents with planted problems: at least 2 exact
+duplicates, 1 near-duplicate, 1 truncated or corrupt file, 1 with missing metadata, 1 newer version of
+an existing document, and 1 containing an injected instruction. Run both batches through A1 and A2.
+Part B: Offline testing at three levels (paper 4.2.5, Table 1)
+Golden set. At least 25 questions in eval/golden.jsonl: at least 15 answerable (with ground-truth
+document and page), at least 5 unanswerable (the correct behaviour is to abstain), and at least 5 hard
+(paraphrased, or needing more than one chunk, or from Batch B). At least 8 questions are written by
+hand by the group. Each question is labelled human or synthetic, and at least 8 synthetic questions
+are reviewed by hand.
+Page | 2
+Module level (embedding). Mean cosine similarity for at least 15 paraphrase pairs against at least 15
+unrelated pairs, and the gap between them. Embedding time per chunk. Determinism: embed the same
+text twice and report the largest difference.
+Component level (retrieval). recall@3, recall@5, MRR and nDCG@5 on the golden set. Then a
+noise test: add at least 3 irrelevant documents, or add typos to the queries, and report how each metric
+changes.
+End-to-end level (answers). Faithfulness (is the answer supported by the retrieved context),
+abstention correctness on the unanswerable questions, citation validity, and latency p50 and p95. If
+you use an LLM as the judge for faithfulness, label at least 8 answers by hand and report how often
+the judge agrees with you.
+Stochasticity. Fix random seeds and run the whole suite twice. Report the difference for each metric
+and explain any remaining variation.
+One command runs the whole suite and writes a timestamped result file to eval/results/ with a
+summary table.
+Part C: Change experiment and release gate (paper 4.1 (d), 4.2.5, 4.2.6)
+C1. One change. Choose one pipeline change: chunk size or overlap, embedding model, reranker,
+top-k, or prompt template. Run the Part B suite on the baseline and on the candidate and compare all
+three levels.
+C2. Release gate. Write thresholds in a config file (for example: recall@5 may not drop by more than
+2 points against the baseline, faithfulness at least a value you justify, p95 latency at most a value you
+justify, abstention correctness not lower than the baseline). A script applies the gate and exits with pass
+or fail. Show one candidate that fails (a deliberately bad one is fine) and one that passes.
+C3. Roll-out. The candidate is released and, if needed, rolled back on Kubernetes. See F3.
+Part D: Observability and traceability (paper 3.2.3, 5.1, Table 2)
+D1. Trace record. Every query writes one JSON line containing: trace id, timestamp, user query, any
+rewritten query, embedding model and version, collection name or version, retrieved chunk ids with
+document ids, document versions and scores, filters applied, reranked order, a prompt hash (or the full
+prompt), model and parameters, response, citations, guardrail actions, latency per stage, and cache hit
+or miss.
+D2. Trace tool. A command takes a trace id and prints the exact context and prompt that produced that
+answer.
+D3. Metrics. Expose or report at least: top-1 retrieval similarity distribution, abstention rate, cache hit
+rate, p95 latency per stage, and number of injection attempts flagged. A script summarizes the trace
+log over a time window.
+D4. Guardrail logging. The injection defence you built in Assignment 02 (or one simple retrieval rail
+of your choice) writes its action into the trace. Test it with the injected document from Batch B.
+D5. Root cause from the trace only. Pick one wrong or abstained answer from Part B. Using only its
+trace, find the cause (which chunk, document version or filter), and write 5 lines in the report.
+Page | 3
+Part E: Drift and coverage checking (paper 4.2.7)
+E1. Live query log. Create at least 40 queries as if from users: about 28 in the domain of your golden
+set and at least 12 from a topic your corpus or tests do not cover.
+E2. Query coverage. For each live query find the most similar golden question. Report the share
+above a similarity threshold you choose and justify (the paper's example flags a gap when under 85
+percent reach a score). List the uncovered queries and group them into topics.
+E3. Data drift. Ingest Batch B, re-run the Part B suite, and report what changed and why.
+E4. Close the gap. Add at least 6 new golden questions from the uncovered topics, re-run, and show
+that coverage rises. A script returns a non-zero exit code when coverage falls below your threshold.
+Part F: Run it on Kubernetes (paper 4.1 (e) and (f), 5.1 reliability)
+F1. Deploy. The API runs as a Deployment, the vector store as a StatefulSet (or a Deployment with a
+PersistentVolumeClaim), and a Service exposes the API. The data lake, quarantine folder and archived
+document versions live on a PersistentVolumeClaim, so they survive pod restarts.
+F2. Jobs. Ingestion with verification (Part A) runs as a Kubernetes Job, and a CronJob re-runs it on a
+schedule. The only writer to the vector store is that Job. The Part B suite runs as a Job (kubectl
+apply -f k8s/eval-job.yaml), writes its result file to a volume, and exits with a failing status
+when the release gate (C2) fails. The gate thresholds (C2) are a ConfigMap, and you show that
+changing a threshold changes the outcome without rebuilding the image.
+F3. Controlled release. The candidate from Part C runs as a second Deployment with its own Service
+and its own collection name, and the Part B suite Job is run against it. If the gate passes, release it to
+the live Deployment with a rolling update (maxUnavailable: 0), watched with kubectl rollout
+status. Show a candidate that is stopped by the gate and never rolled out, and a bad release that you
+reverse with kubectl rollout undo. After the undo, a new trace must show the previous collection
+and embedding version.
+F4. Observability on the cluster. Trace records go to standard output as JSON lines and are readable
+with kubectl logs. They are also written to a volume for the report scripts. The metrics endpoint is
+reachable with kubectl port-forward.
+F5. Resources. Set resource requests and limits for the API, the vector store and the Jobs, from
+measurements you take (copy the numbers into the report).
+Every manifest is committed under k8s/. A fresh cluster must reach a working pipeline by applying
+them, with any extra commands listed in a k8s/README.md.
+Part G: Report (8 pages at most)
+1. A table that maps each stage of Figure 3 (ingest, verify, update data lake, update retrieval sources,
+offline testing, live testing, check coverage) to what your pipeline does, the file that does it, and what
+is missing.
+2. A table for the five qualities in the paper's Table 2 (adaptability, monitorability, observability,
+traceability, reliability): what you measure, your threshold, and the evidence.
+3. Your results tables and figures from Parts A to F, and the release decision for Part C (release or reject,
+with reasons).
+Page | 4
+4. Short answers: (a) Which verification check caught the most problems in Batch B, and which problem
+did you not catch? What would catch it? (b) Give an example from your results where a module-level
+metric looked fine but a component or end-to-end metric did not, or explain why you did not see one.
+(c) Did you archive or delete old versions, and what breaks if you delete? (d) Which metric in your
+suite do you trust least, and why? (e) Which of the paper's ideas was hardest to apply to your pipeline,
+and what did you change from the paper? (f) Which Kubernetes object carries which RAGOps
+responsibility in your design (for example, which object makes sure only one component writes to the
+vector store)?
+5. A contribution table (what each member did) and an AI statement of 2 to 3 lines.
+Submission
+Submit two things: the GitHub repository and the report PDF with screenshots.
+1. GitHub repository
+The URL of your group's repository, containing the code, k8s/, eval/ (golden set and result files),
+traces/, the configuration files and a README with the command for each part.
+2. Screenshots (appendix of the report)
+Each screenshot shows the command you ran and its output, in the terminal, with nothing cropped.
+Label it with the part and item (for example "B3"). Screenshots must come from your own cluster and
+your own runs.
+A: the verification report for Batch B (pass or fail per check, with reasons); a second ingestion run on
+an unchanged corpus showing 0 chunks embedded.
+B: the evaluation summary with all three levels.
+C: the release gate failing and the release gate passing.
+D: one full trace record; the trace tool rebuilding the prompt for a trace id.
+E: the coverage output before and after adding the new questions.
+F: kubectl get all,pvc,configmap,cronjob,job for your namespace; the logs of a completed
+ingestion Job and a completed evaluation Job; the gate result changing after a ConfigMap edit;
+kubectl rollout status and kubectl rollout undo with a trace afterwards showing the
+previous collection and embedding version.
+Best of Luck ☺
+Page | 5

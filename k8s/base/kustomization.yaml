@@ -4,6 +4,8 @@ namespace: rahbar
 resources:
   - namespace.yaml
   - configmap.yaml
+  - gate-configmap.yaml
+  - pvcs.yaml
   - chroma.yaml
   - redis.yaml
   - api.yaml
@@ -11,6 +13,8 @@ resources:
   - ingress.yaml
   - indexer-job.yaml
   - reindex-cronjob.yaml
+  - verify-cronjob.yaml
+  - eval-job.yaml
   - networkpolicy.yaml
   - hpa.yaml
 
