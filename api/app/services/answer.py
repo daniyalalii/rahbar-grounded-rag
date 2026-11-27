@@ -88,7 +88,7 @@ def answer_question(
                 llm_model="semantic-cache",
                 llm_params={},
                 response_text=str(cached_hit.answer),
-                citations=[c.dict() if hasattr(c, "dict") else c for c in (cached_hit.citations or [])],
+                citations=[c.dict() for c in (cached_hit.citations or [])],
                 guardrail_actions=[],
                 latency_stages=latency_stages,
                 cache_hit=True,
