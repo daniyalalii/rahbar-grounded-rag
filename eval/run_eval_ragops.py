@@ -20,7 +20,6 @@ Exit code 0 = gate passed, 1 = gate failed.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import math
 import os
@@ -28,7 +27,7 @@ import random
 import sys
 import time
 from pathlib import Path
-from statistics import mean, median, quantiles
+from statistics import mean
 from typing import Optional
 
 import httpx
@@ -315,10 +314,14 @@ def run_level2(client: httpx.Client, api: str, questions: list[dict]) -> dict:
             r5 = recall_at_k(relevant, retrieved, 5)
             m = mrr(relevant, retrieved)
             n = ndcg_at_k(relevant, retrieved, 5)
-            if r3 is not None: r3_list.append(r3)
-            if r5 is not None: r5_list.append(r5)
-            if m is not None: mrr_list.append(m)
-            if n is not None: ndcg_list.append(n)
+            if r3 is not None:
+                r3_list.append(r3)
+            if r5 is not None:
+                r5_list.append(r5)
+            if m is not None:
+                mrr_list.append(m)
+            if n is not None:
+                ndcg_list.append(n)
         except Exception as exc:
             print(f"  [WARNING] {q['id']}: {exc}")
 

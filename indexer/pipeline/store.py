@@ -130,7 +130,6 @@ def _archive_superseded(settings: IndexerSettings, source: str) -> None:
     archive_path = corpus_path.parent / ARCHIVE_DIR_NAME
     archive_path.mkdir(parents=True, exist_ok=True)
     for ext in [".md", ".pdf", ".html", ".txt"]:
-        candidate = corpus_path / (source.replace(source.rsplit(".", 1)[-1], ext.lstrip(".")))
         for f in corpus_path.glob(f"*{ext}"):
             if f.stem == Path(source).stem:
                 dest = archive_path / f"{f.stem}_{time.strftime('%Y%m%d')}{f.suffix}"

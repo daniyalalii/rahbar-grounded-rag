@@ -10,7 +10,6 @@ RAGOps Part D: every query emits a full trace record via tracer.emit_trace().
 from __future__ import annotations
 
 import logging
-import os
 import time
 
 from ..config import Settings
