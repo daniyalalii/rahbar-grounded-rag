@@ -344,7 +344,7 @@ def run_level2(client: httpx.Client, api: str, questions: list[dict]) -> dict:
                 words[idx] = w[:i] + w[i + 1] + w[i] + w[i + 2:]
         return " ".join(words)
 
-    r5_noise = []
+    r3_noise, r5_noise, mrr_noise, ndcg_noise = [], [], [], []
     for q in questions[:10]:  # sample 10 for noise test
         if q.get("must_abstain"):
             continue
@@ -353,20 +353,38 @@ def run_level2(client: httpx.Client, api: str, questions: list[dict]) -> dict:
             noisy_q = _add_typo(q["question"])
             resp, _ = _ask(client, api, noisy_q)
             retrieved = resp.get("retrieved") or []
+            r3 = recall_at_k(relevant, retrieved, 3)
             r5 = recall_at_k(relevant, retrieved, 5)
+            m = mrr(relevant, retrieved)
+            n = ndcg_at_k(relevant, retrieved, 5)
+            if r3 is not None:
+                r3_noise.append(r3)
             if r5 is not None:
                 r5_noise.append(r5)
+            if m is not None:
+                mrr_noise.append(m)
+            if n is not None:
+                ndcg_noise.append(n)
         except Exception:
             pass
 
+    noise_r3 = round(mean(r3_noise), 4) if r3_noise else 0.0
     noise_r5 = round(mean(r5_noise), 4) if r5_noise else 0.0
+    noise_mrr = round(mean(mrr_noise), 4) if mrr_noise else 0.0
+    noise_ndcg = round(mean(ndcg_noise), 4) if ndcg_noise else 0.0
     noise_drop = round(baseline["recall_at_5"] - noise_r5, 4)
 
     results = {
         **baseline,
         "noise_test": {
+            "recall_at_3_with_typos": noise_r3,
+            "recall_at_3_drop": round(baseline["recall_at_3"] - noise_r3, 4),
             "recall_at_5_with_typos": noise_r5,
             "recall_at_5_drop": noise_drop,
+            "mrr_with_typos": noise_mrr,
+            "mrr_drop": round(baseline["mrr"] - noise_mrr, 4),
+            "ndcg_at_5_with_typos": noise_ndcg,
+            "ndcg_at_5_drop": round(baseline["ndcg_at_5"] - noise_ndcg, 4),
             "questions_sampled": len(r5_noise),
         },
     }
@@ -489,32 +507,36 @@ def run_stochasticity(client: httpx.Client, api: str, questions: list[dict]) -> 
 
 def run_gate(results: dict, baseline: dict | None, thresholds: dict) -> list[str]:
     failures = []
-    r5 = results.get("level2", {}).get("recall_at_5", 0.0)
-    faith = results.get("level3", {}).get("faithfulness_mean", 0.0)
-    p95 = results.get("level3", {}).get("latency_p95_ms", 999999)
-    abstain = results.get("level3", {}).get("abstention_correctness", 0.0)
-    cv = results.get("level3", {}).get("citation_validity_mean", 0.0)
+    l2 = results.get("level2_retrieval") or results.get("level2") or {}
+    l3 = results.get("level3_e2e") or results.get("level3") or {}
+
+    r5 = float(l2.get("recall_at_5", 0.0))
+    faith = float(l3.get("faithfulness_mean", 0.0))
+    p95 = float(l3.get("latency_p95_ms", 999999))
+    abstain = float(l3.get("abstention_correctness", 0.0))
+    cv = float(l3.get("citation_validity_mean", 0.0))
 
     if baseline:
-        base_r5 = baseline.get("level2", {}).get("recall_at_5", baseline.get("recall_at_5", 0.0))
-        max_drop = float(thresholds.get("recall_at_5_max_drop", 0.05))
+        base_l2 = baseline.get("level2_retrieval") or baseline.get("level2") or {}
+        base_r5 = float(base_l2.get("recall_at_5", baseline.get("recall_at_5", 0.0)))
+        max_drop = float(thresholds.get("RECALL_AT_5_MAX_DROP", 0.05))
         drop = round(base_r5 - r5, 4)
         if drop > max_drop:
-            failures.append(f"recall@5 dropped {drop:.4f} (baseline {base_r5:.4f} → {r5:.4f}), max allowed drop {max_drop}")
+            failures.append(f"recall@5 dropped {drop:.4f} (baseline {base_r5:.4f} -> {r5:.4f}), max allowed drop {max_drop}")
 
-    min_faith = float(thresholds.get("faithfulness_min", 0.70))
+    min_faith = float(thresholds.get("FAITHFULNESS_MIN", 0.70))
     if faith < min_faith:
         failures.append(f"faithfulness {faith:.4f} < threshold {min_faith}")
 
-    max_p95 = float(thresholds.get("p95_latency_max_ms", 5000))
+    max_p95 = float(thresholds.get("P95_LATENCY_MAX_MS", 5000))
     if p95 > max_p95:
         failures.append(f"p95 latency {p95:.0f}ms > threshold {max_p95:.0f}ms")
 
-    min_abstain = float(thresholds.get("abstention_correctness_min", 1.0))
+    min_abstain = float(thresholds.get("ABSTENTION_CORRECTNESS_MIN", 1.0))
     if abstain < min_abstain:
         failures.append(f"abstention correctness {abstain:.4f} < threshold {min_abstain}")
 
-    min_cv = float(thresholds.get("citation_validity_min", 0.90))
+    min_cv = float(thresholds.get("CITATION_VALIDITY_MIN", 0.90))
     if cv < min_cv:
         failures.append(f"citation validity {cv:.4f} < threshold {min_cv}")
 
@@ -535,25 +557,89 @@ def load_golden(path: Path) -> list[dict]:
     return questions
 
 
-def load_thresholds(path: Path | None) -> dict:
-    defaults = {
-        "recall_at_5_max_drop": 0.05,
-        "faithfulness_min": 0.70,
-        "p95_latency_max_ms": 5000,
-        "abstention_correctness_min": 1.0,
-        "citation_validity_min": 0.90,
+def load_thresholds(path: Path | None) -> dict[str, float]:
+    defaults: dict[str, float] = {
+        "RECALL_AT_5_MAX_DROP": 0.05,
+        "FAITHFULNESS_MIN": 0.70,
+        "P95_LATENCY_MAX_MS": 5000.0,
+        "ABSTENTION_CORRECTNESS_MIN": 1.0,
+        "CITATION_VALIDITY_MIN": 0.90,
     }
+    for k in defaults:
+        env_val = os.environ.get(k)
+        if env_val:
+            try:
+                defaults[k] = float(env_val)
+            except ValueError:
+                pass
     if path and path.exists():
         try:
-            data = {}
-            for line in path.read_text().splitlines():
-                if ":" in line and not line.strip().startswith("#"):
-                    k, _, v = line.partition(":")
-                    data[k.strip()] = v.strip().strip('"')
-            defaults.update(data)
+            for line in path.read_text(encoding="utf-8").splitlines():
+                s = line.strip()
+                if not s or s.startswith("#") or any(
+                    s.startswith(p) for p in ("apiVersion", "kind", "metadata", "data")
+                ):
+                    continue
+                if ":" in s:
+                    k, _, v = s.partition(":")
+                    norm_k = k.strip().upper().replace("-", "_")
+                    v = v.strip().strip('"').strip("'")
+                    if norm_k in defaults:
+                        try:
+                            defaults[norm_k] = float(v)
+                        except ValueError:
+                            pass
         except Exception:
             pass
     return defaults
+
+
+def _compare_runs(run1: dict, run2: dict) -> dict:
+    """Compare all three levels between two full suite executions."""
+    pairs = [
+        ("l1_similarity_gap", ("level1_embedding", "similarity_gap")),
+        ("l1_determinism_max_diff", ("level1_embedding", "determinism_max_diff")),
+        ("l2_recall_at_3", ("level2_retrieval", "recall_at_3")),
+        ("l2_recall_at_5", ("level2_retrieval", "recall_at_5")),
+        ("l2_mrr", ("level2_retrieval", "mrr")),
+        ("l2_ndcg_at_5", ("level2_retrieval", "ndcg_at_5")),
+        ("l3_faithfulness_mean", ("level3_e2e", "faithfulness_mean")),
+        ("l3_abstention_correctness", ("level3_e2e", "abstention_correctness")),
+        ("l3_citation_validity_mean", ("level3_e2e", "citation_validity_mean")),
+        ("l3_latency_p50_ms", ("level3_e2e", "latency_p50_ms")),
+        ("l3_latency_p95_ms", ("level3_e2e", "latency_p95_ms")),
+    ]
+    diffs = {}
+    for name, (sec, key) in pairs:
+        v1 = (run1.get(sec) or {}).get(key)
+        v2 = (run2.get(sec) or {}).get(key)
+        if isinstance(v1, (int, float)) and isinstance(v2, (int, float)):
+            diffs[name] = {
+                "run1": v1,
+                "run2": v2,
+                "abs_diff": round(abs(float(v2) - float(v1)), 4),
+            }
+    return diffs
+
+
+def _run_suite_once(
+    questions: list[dict],
+    api: str,
+    ollama_url: str,
+    embed_model: str,
+    skip_level1: bool,
+    seed: int = 42,
+) -> dict:
+    random.seed(seed)
+    level1 = {"skipped": True} if skip_level1 else run_level1(ollama_url, embed_model)
+    with httpx.Client(timeout=120.0) as client:
+        level2 = run_level2(client, api, questions)
+        level3 = run_level3(client, api, questions)
+    return {
+        "level1_embedding": level1,
+        "level2_retrieval": level2,
+        "level3_e2e": level3,
+    }
 
 
 def main() -> int:
@@ -564,9 +650,11 @@ def main() -> int:
     parser.add_argument("--thresholds", type=Path, default=None, help="gate-configmap.yaml or thresholds file")
     parser.add_argument("--label", default="run", help="label for this run (e.g. 'baseline', 'candidate')")
     parser.add_argument("--save-baseline", action="store_true", help="save results as new baseline")
+    parser.add_argument("--out-dir", type=Path, default=Path(os.environ.get("EVAL_RESULTS_DIR", str(HERE / "results"))))
     parser.add_argument("--ollama-url", default=os.environ.get("OLLAMA_URL", "http://host.minikube.internal:11434"))
     parser.add_argument("--embed-model", default=os.environ.get("EMBED_MODEL", "nomic-embed-text"))
     parser.add_argument("--skip-level1", action="store_true", help="skip embedding module tests (no Ollama needed)")
+    parser.add_argument("--stochasticity-full", action="store_true", help="run complete suite twice with fixed seed and save comparison")
     args = parser.parse_args()
 
     if not args.golden.exists():
@@ -574,23 +662,52 @@ def main() -> int:
 
     questions = load_golden(args.golden)
     thresholds = load_thresholds(args.thresholds)
-    baseline = json.loads(args.baseline.read_text()) if args.baseline.exists() else None
+    baseline = json.loads(args.baseline.read_text(encoding="utf-8")) if args.baseline.exists() else None
 
-    print(f"RAHBAR RAGOps Evaluation — {len(questions)} questions — label: {args.label}")
+    print(f"RAHBAR RAGOps Evaluation - {len(questions)} questions - label: {args.label}")
     print(f"API: {args.api}")
 
     timestamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    out_dir = args.out_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Level 1
-    if args.skip_level1:
-        level1 = {"skipped": True}
+    suite1 = _run_suite_once(questions, args.api, args.ollama_url, args.embed_model, args.skip_level1, seed=42)
+    level1 = suite1["level1_embedding"]
+    level2 = suite1["level2_retrieval"]
+    level3 = suite1["level3_e2e"]
+
+    if args.stochasticity_full:
+        print("\n=== Full Stochasticity Experiment (Run 2 with seed=42) ===")
+        suite2 = _run_suite_once(questions, args.api, args.ollama_url, args.embed_model, args.skip_level1, seed=42)
+        diffs = _compare_runs(suite1, suite2)
+        stochastic = {
+            "mode": "full_suite_2x",
+            "seed": 42,
+            "metric_differences": diffs,
+            "explanation": (
+                "Both runs used seed=42. Retrieval and embedding metrics are deterministic (0 diff) "
+                "when collection and embeddings are fixed; any remaining variation in Level 3 comes "
+                "from LLM sampling temperature > 0 and wall-clock latency jitter."
+            ),
+        }
+        run2_payload = {
+            "timestamp": timestamp,
+            "label": f"{args.label}_run2",
+            "golden": str(args.golden),
+            "questions_total": len(questions),
+            "api": args.api,
+            "embed_model": args.embed_model,
+            **suite2,
+        }
+        (out_dir / f"eval_{args.label}_run2_{timestamp}.json").write_text(
+            json.dumps(run2_payload, indent=2), encoding="utf-8"
+        )
+        (out_dir / f"stochasticity_comparison_{timestamp}.json").write_text(
+            json.dumps(stochastic, indent=2), encoding="utf-8"
+        )
     else:
-        level1 = run_level1(args.ollama_url, args.embed_model)
-
-    with httpx.Client(timeout=120.0) as client:
-        level2 = run_level2(client, args.api, questions)
-        level3 = run_level3(client, args.api, questions)
-        stochastic = run_stochasticity(client, args.api, questions)
+        with httpx.Client(timeout=120.0) as client:
+            stochastic = run_stochasticity(client, args.api, questions)
 
     results = {
         "timestamp": timestamp,
@@ -609,8 +726,6 @@ def main() -> int:
     failures = run_gate(results, baseline, thresholds)
 
     # Write timestamped result file
-    out_dir = HERE / "results"
-    out_dir.mkdir(exist_ok=True)
     out_file = out_dir / f"eval_{args.label}_{timestamp}.json"
     out_file.write_text(json.dumps(results, indent=2), encoding="utf-8")
     print(f"\nResults written to {out_file}")

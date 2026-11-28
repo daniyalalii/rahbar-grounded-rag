@@ -5,7 +5,7 @@ metadata:
 data:
   EMBED_MODEL: "nomic-embed-text"
   RETRIEVER: "chroma"
-  LLM_PROVIDER: "ollama"
+  LLM_PROVIDER: "ollama-host"
   CHROMA_HOST: "chroma"
   CHROMA_PORT: "8000"
   CHROMA_COLLECTION: "rahbar"
@@ -18,4 +18,4 @@ data:
   RELEVANCE_FLOOR: "0.35"
   CACHE_THRESHOLD: "0.92"
   OLLAMA_URL: "http://host.minikube.internal:11434"
-  LLM_MODEL: "llama3.2:3b"
+  LLM_MODEL: "deepseek-r1:1.5b"
