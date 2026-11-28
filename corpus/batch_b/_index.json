@@ -1,0 +1,14 @@
+[
+  {"file": "fees-dup-a.md",        "doc_version": "1.0", "superseded": false},
+  {"file": "fees-dup-b.md",        "doc_version": "1.0", "superseded": false},
+  {"file": "fees-near-dup.md",     "doc_version": "1.0", "superseded": false},
+  {"file": "truncated-doc.md",     "doc_version": "1.0", "superseded": false},
+  {"file": "no-metadata.md",       "doc_version": "unknown", "superseded": false},
+  {"file": "fees-newer-version.md","doc_version": "2.0", "superseded": false},
+  {"file": "injected-doc.md",      "doc_version": "1.0", "superseded": false},
+  {"file": "empty-doc.md",         "doc_version": "1.0", "superseded": false},
+  {"file": "garbled-doc.md",       "doc_version": "1.0", "superseded": false},
+  {"file": "code-of-conduct.md",   "doc_version": "1.0", "superseded": false},
+  {"file": "grad-policy.md",       "doc_version": "1.0", "superseded": false},
+  {"file": "scholarship-policy.md","doc_version": "1.0", "superseded": false}
+]

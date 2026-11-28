@@ -1,0 +1,37 @@
+---
+# RAGOps Part F1: PVC for data lake (documents, quarantine, archive).
+# Survives pod restarts — required by Part F.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: datalake-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
+# RAGOps Part F1: PVC for trace records (Part D).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: traces-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+# RAGOps Part F2: PVC for evaluation results.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: eval-results-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 500Mi

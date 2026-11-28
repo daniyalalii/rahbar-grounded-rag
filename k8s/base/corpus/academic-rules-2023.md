@@ -1,6 +1,9 @@
 ---
-source: academic-rules-2023.md
-doc_version: 2023
+title: "Margalla Institute of Technology: Academic Rules (2023 edition)"
+source: academic-rules.md
+date: "2023-08-01"
+version: "1.0"
+page_count: 1
 superseded: true
 ---
 # Margalla Institute of Technology: Academic Rules (2023 edition)

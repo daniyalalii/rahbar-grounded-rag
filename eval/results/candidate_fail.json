@@ -1,0 +1,47 @@
+{
+  "timestamp": "20261127T102000Z",
+  "label": "candidate_fail",
+  "golden": "eval/golden.jsonl",
+  "questions_total": 25,
+  "api": "http://api-candidate:8000",
+  "embed_model": "nomic-embed-text",
+  "level1_embedding": {
+    "mean_paraphrase_similarity": 0.7200,
+    "mean_unrelated_similarity": 0.3800,
+    "similarity_gap": 0.3400,
+    "embed_time_per_chunk_ms": 95.0,
+    "determinism_max_diff": 0.0,
+    "paraphrase_pairs_count": 15,
+    "unrelated_pairs_count": 15,
+    "embed_model": "bad-embed-candidate"
+  },
+  "level2_retrieval": {
+    "recall_at_3": 0.6500,
+    "recall_at_5": 0.7200,
+    "mrr": 0.6100,
+    "ndcg_at_5": 0.6800,
+    "questions_scored": 20,
+    "noise_test": {
+      "recall_at_5_with_typos": 0.6000,
+      "recall_at_5_drop": 0.1200,
+      "questions_sampled": 10
+    }
+  },
+  "level3_e2e": {
+    "faithfulness_mean": 0.5800,
+    "faithfulness_method": "keyword_heuristic",
+    "abstention_correctness": 0.6000,
+    "abstain_correct": 3,
+    "abstain_total": 5,
+    "citation_validity_mean": 0.7400,
+    "latency_p50_ms": 2800.0,
+    "latency_p95_ms": 6200.0,
+    "questions_scored": 25
+  },
+  "stochasticity": {
+    "run1_recall_at_5": 0.7200,
+    "run2_recall_at_5": 0.7100,
+    "diff": 0.0100,
+    "explanation": "Diff from non-deterministic candidate model."
+  }
+}

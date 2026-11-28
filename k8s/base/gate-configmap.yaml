@@ -1,0 +1,16 @@
+---
+# RAGOps Part C2: Gate thresholds live here (not in the image).
+# Changing a value here and re-applying changes gate behaviour WITHOUT rebuilding.
+#
+# kubectl apply -f k8s/base/gate-configmap.yaml
+# kubectl edit configmap ragops-gate-thresholds -n rahbar
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ragops-gate-thresholds
+data:
+  RECALL_AT_5_MAX_DROP: "0.05"
+  FAITHFULNESS_MIN: "0.70"
+  P95_LATENCY_MAX_MS: "5000"
+  ABSTENTION_CORRECTNESS_MIN: "1.0"
+  CITATION_VALIDITY_MIN: "0.90"

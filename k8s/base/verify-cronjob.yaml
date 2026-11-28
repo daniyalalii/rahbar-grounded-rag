@@ -1,0 +1,72 @@
+---
+# RAGOps Part F2: CronJob to re-run ingestion+verification on a schedule.
+# Schedule: every day at 2 AM UTC.
+# Only the indexer Job writes to the vector store (enforced by design/NetworkPolicy).
+#
+# kubectl apply -f k8s/base/verify-cronjob.yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: rahbar-verify-ingest
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app: indexer
+            triggered-by: cronjob
+        spec:
+          enableServiceLinks: false
+          serviceAccountName: indexer
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+          containers:
+            - name: indexer
+              image: rahbar-indexer:dev
+              imagePullPolicy: IfNotPresent
+              args: ["python", "-m", "pipeline.run"]
+              env:
+                - name: CORPUS_DIR
+                  value: /datalake/corpus
+              envFrom:
+                - configMapRef:
+                    name: rahbar-config
+              resources:
+                requests:
+                  cpu: 200m
+                  memory: 256Mi
+                limits:
+                  cpu: "1"
+                  memory: 1Gi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: false
+                runAsNonRoot: true
+                runAsUser: 10001
+                capabilities:
+                  drop:
+                    - ALL
+              volumeMounts:
+                - name: datalake
+                  mountPath: /datalake
+                - name: eval-results
+                  mountPath: /eval/results
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: datalake
+              persistentVolumeClaim:
+                claimName: datalake-pvc
+            - name: eval-results
+              persistentVolumeClaim:
+                claimName: eval-results-pvc
+            - name: tmp
+              emptyDir: {}

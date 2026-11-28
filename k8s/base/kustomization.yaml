@@ -4,6 +4,8 @@ namespace: rahbar
 resources:
   - namespace.yaml
   - configmap.yaml
+  - gate-configmap.yaml
+  - pvcs.yaml
   - chroma.yaml
   - redis.yaml
   - api.yaml
@@ -11,6 +13,8 @@ resources:
   - ingress.yaml
   - indexer-job.yaml
   - reindex-cronjob.yaml
+  - verify-cronjob.yaml
+  - eval-job.yaml
   - networkpolicy.yaml
   - hpa.yaml
 
@@ -20,6 +24,10 @@ configMapGenerator:
       - corpus/academic-rules-2023.md
       - corpus/academic-rules-2026.md
       - corpus/fees-2026.md
+  - name: eval-scripts
+    files:
+      - eval/run_eval_ragops.py
+      - eval/golden.jsonl
 
 generatorOptions:
   disableNameSuffixHash: true

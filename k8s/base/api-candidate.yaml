@@ -1,0 +1,117 @@
+---
+# RAGOps Part F3: Candidate Deployment for pipeline change experiment (Part C).
+# Runs the new chunk size / embedding model / prompt template candidate alongside
+# the live deployment. Gate is run against this deployment's Service.
+# If gate passes → rolling update to the live deployment.
+# If gate fails  → this deployment is deleted; live deployment untouched.
+#
+# kubectl apply -f k8s/base/api-candidate.yaml
+# kubectl delete -f k8s/base/api-candidate.yaml   (if gate fails)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: api-candidate
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-candidate
+  labels:
+    app: api-candidate
+    ragops-role: candidate
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api-candidate
+  template:
+    metadata:
+      labels:
+        app: api-candidate
+        ragops-role: candidate
+    spec:
+      enableServiceLinks: false
+      serviceAccountName: api-candidate
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: api
+          image: rahbar-api:candidate
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            # Candidate uses its own collection to avoid polluting the live index
+            - name: CHROMA_COLLECTION
+              value: rahbar-candidate
+            # Part C1: change chunk size for the candidate experiment
+            - name: CHUNK_SIZE
+              value: "256"
+            - name: CHUNK_OVERLAP
+              value: "32"
+            - name: TRACE_DIR
+              value: /traces
+          envFrom:
+            - configMapRef:
+                name: rahbar-config
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sleep", "5"]
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            failureThreshold: 30
+            periodSeconds: 2
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8000
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 384Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: traces
+              mountPath: /traces
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: traces
+          persistentVolumeClaim:
+            claimName: traces-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-candidate
+spec:
+  type: ClusterIP
+  selector:
+    app: api-candidate
+  ports:
+    - port: 8000
+      targetPort: 8000

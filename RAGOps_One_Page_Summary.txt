@@ -1,0 +1,44 @@
+RAGOps: One-Page Summary
+Paper: RAGOps: Operating and Managing Retrieval-Augmented Generation Pipelines. Xu, Weytjens, Zhang, Lu,
+Weber, Zhu. Preprint, not peer reviewed.
+The problem
+LLMs only know their training data, so they can be outdated, hallucinate, and know nothing about private
+company data. Retrieval-Augmented Generation (RAG) fixes this by retrieving relevant information from an
+external knowledge source and giving it to the LLM before it answers. But that knowledge keeps changing, and
+existing LLMOps tools focus on models and prompts, not on the evolving data behind a RAG system.
+The proposal: RAGOps
+RAGOps extends LLMOps by managing the retrieval sources and data as a first-class concern. It combines two
+intertwined lifecycles:
+(cid:127) Query-processing pipeline: the normal DevOps loop (Plan, Build, Test, Release, Deploy, Operate & Monitor,
+Analyze & Feedback) with RAG-specific checks such as retrieval relevance, faithfulness and data drift.
+(cid:127) Data-management lifecycle: Ingest, Verify, Update data lake, Update retrieval sources, Offline testing, Live
+testing, Coverage checking.
+Architecture (4+1 view model)
+A RAG system has three core parts: retrieval sources (vector DB, knowledge graph, document store, APIs), a
+retriever (plans, embeds, searches, reranks) and a generator (enhances the query, builds the prompt, calls the
+LLM, validates the answer). Guardrails (input, dialog, retrieval and output rails) sit between components. Human
+experts can act as a live knowledge source (human-in-the-retrieval).
+Data verification
+Incoming data is checked for quality, completeness, recency, consistency (contradictions) and uniqueness
+(duplicates) before it reaches the data lake, which acts as a versioned single source of truth. Changes are then
+propagated incrementally to the retrieval sources (re-chunk, re-embed, re-index).
+Testing and quality
+(cid:127) Test at three levels: module (e.g. embeddings), component (retrieval: recall@K, MRR, nDCG) and end-to-end
+(faithfulness, hallucination rate).
+(cid:127) Use domain test sets, public benchmarks (BEIR, MS MARCO) and synthetic data; fix random seeds because
+RAG output is stochastic.
+(cid:127) Deploy safely with shadow testing, A/B testing or staged roll-out. Run coverage checks so test data still
+matches real queries (example: expand the test set if under 85% of live queries are similar enough).
+(cid:127) Key qualities: adaptability, monitorability, observability, traceability, reliability.
+Use cases
+Taxation assistant: weekly crawl of government data, vector DB, LLM reranker, privacy guardrail, feedback
+logging. Magda Copilot: scientific assistant routing queries to UniProt, BLAST, AlphaFold, SQL and causal-graph
+tools, turning experts' tacit knowledge into a new data source.
+Open challenges
+Responsible AI and regulation (GDPR, EU AI Act); no standard RAG evaluation metrics; end-to-end observability;
+multimodal data; deciding when to involve humans; detecting malicious data inserted into the knowledge base;
+RAGOps-specific tooling.
+Takeaway
+A RAG system is never "build once and done." Its knowledge changes constantly, so reliable systems need
+disciplined data operations (ingest, verify, update, test, monitor) alongside normal software operations. The paper
+is a conceptual framework, not an experimental study.
