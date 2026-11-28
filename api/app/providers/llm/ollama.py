@@ -66,12 +66,21 @@ class OllamaProvider:
             "confidence": "high",
         }
 
+        citations_hint = "\n".join(
+            f'  * {{"source": "{p.source}", "section": "{p.section}", "page": {p.page if p.page is not None else 1}}}'
+            for p in passages[:3]
+        ) if passages else ""
+
         content_prompt = (
             "You are RAHBAR, an academic guidance assistant for FAST-NUCES students.\n"
             "Answer the question using ONLY the provided passages.\n"
             "You MUST respond with a single valid JSON object strictly matching this schema structure:\n"
             f"{json.dumps(example_structure, indent=2)}\n"
-            "CRITICAL: Do NOT echo schema types or definitions. Provide real answer values in the JSON fields."
+            "CRITICAL RULES:\n"
+            "1. Do NOT echo schema types or definitions. Provide real answer values in the JSON fields.\n"
+            "2. When the answer is found in the passages, set 'answered_from_context': true and 'confidence': 'high'.\n"
+            "3. For citations, use the exact source and section from the passages, such as:\n"
+            f"{citations_hint}\n"
         )
 
         payload: dict[str, Any] = {
