@@ -77,7 +77,9 @@
 <script>
 // The API sits behind the same Ingress host at /api. For local development you can
 // point elsewhere with ?api=http://localhost:8000 (that server must allow CORS).
-const API_BASE = new URLSearchParams(location.search).get("api") || window.RAHBAR_API || "";
+const API_BASE = new URLSearchParams(location.search).get("api")
+  || window.RAHBAR_API
+  || (location.port === "8080" ? `http://${location.hostname}:8000` : "");
 
 const thread = document.getElementById("thread");
 const form = document.getElementById("ask");

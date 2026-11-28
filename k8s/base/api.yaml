@@ -35,6 +35,9 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
+          env:
+            - name: TRACE_DIR
+              value: /traces
           envFrom:
             - configMapRef:
                 name: rahbar-config
@@ -78,9 +81,14 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            - name: traces
+              mountPath: /traces
       volumes:
         - name: tmp
           emptyDir: {}
+        - name: traces
+          persistentVolumeClaim:
+            claimName: traces-pvc
 ---
 apiVersion: v1
 kind: Service

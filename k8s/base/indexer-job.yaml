@@ -50,9 +50,14 @@ spec:
             - name: corpus
               mountPath: /corpus
               readOnly: true
+            - name: datalake
+              mountPath: /datalake
       volumes:
         - name: tmp
           emptyDir: {}
         - name: corpus
           configMap:
             name: corpus
+        - name: datalake
+          persistentVolumeClaim:
+            claimName: datalake-pvc

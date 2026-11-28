@@ -1,0 +1,84 @@
+---
+# RAGOps Part F2: Evaluation Job.
+# Runs the full 3-level eval suite (Part B) and exits with code 1 if gate fails.
+# Results are written to the eval-results PVC so they persist across runs.
+#
+# kubectl apply -f k8s/base/eval-job.yaml
+# kubectl logs job/rahbar-eval -n rahbar
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rahbar-eval
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: rahbar-eval
+    spec:
+      enableServiceLinks: false
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: eval
+          image: rahbar-indexer:dev
+          imagePullPolicy: IfNotPresent
+          command:
+            - python
+            - /app/eval/run_eval_ragops.py
+            - --api
+            - http://api:8000
+            - --golden
+            - /app/eval/golden.jsonl
+            - --label
+            - $(RUN_LABEL)
+            - --skip-level1
+          env:
+            - name: RUN_LABEL
+              value: "k8s-eval"
+            - name: TRACE_DIR
+              value: /traces
+          envFrom:
+            - configMapRef:
+                name: rahbar-config
+            - configMapRef:
+                name: ragops-gate-thresholds
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+            runAsUser: 10001
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: eval-scripts
+              mountPath: /app/eval
+            - name: eval-results
+              mountPath: /eval/results
+            - name: traces
+              mountPath: /traces
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: eval-scripts
+          configMap:
+            name: eval-scripts
+        - name: eval-results
+          persistentVolumeClaim:
+            claimName: eval-results-pvc
+        - name: traces
+          persistentVolumeClaim:
+            claimName: traces-pvc
+        - name: tmp
+          emptyDir: {}

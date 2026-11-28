@@ -23,17 +23,25 @@ def embed(texts: list[str], settings: IndexerSettings) -> list[list[float]]:
         return []
 
     url = settings.ollama_url.rstrip("/") + "/api/embed"
-    payload = {"model": settings.embed_model, "input": texts}
+    batch_size = 50
+    all_embeddings: list[list[float]] = []
 
-    response = httpx.post(url, json=payload, timeout=_TIMEOUT)
-    response.raise_for_status()
+    print(f"Embedding {len(texts)} chunks in batches of {batch_size}...", flush=True)
+    for i in range(0, len(texts), batch_size):
+        batch = texts[i : i + batch_size]
+        payload = {"model": settings.embed_model, "input": batch}
 
-    data = response.json()
-    embeddings: list[list[float]] = data["embeddings"]
+        response = httpx.post(url, json=payload, timeout=_TIMEOUT)
+        response.raise_for_status()
 
-    if len(embeddings) != len(texts):
-        raise ValueError(
-            f"embed: expected {len(texts)} vectors, got {len(embeddings)}"
-        )
+        data = response.json()
+        embeddings: list[list[float]] = data.get("embeddings", [])
 
-    return embeddings
+        if len(embeddings) != len(batch):
+            raise ValueError(
+                f"embed: expected {len(batch)} vectors, got {len(embeddings)}"
+            )
+        all_embeddings.extend(embeddings)
+        print(f"Embedded {len(all_embeddings)}/{len(texts)} chunks", flush=True)
+
+    return all_embeddings

@@ -1,0 +1,282 @@
+{
+  "run_id": "2026-11-27T05-20-20Z",
+  "corpus_dir": "corpus\\batch_b",
+  "total": 13,
+  "passed": 6,
+  "quarantined": 7,
+  "documents": [
+    {
+      "file": "code-of-conduct.md",
+      "overall_passed": true,
+      "quality": {
+        "passed": true,
+        "reason": "ok"
+      },
+      "completeness": {
+        "passed": true,
+        "reason": "ok"
+      },
+      "recency": {
+        "passed": true,
+        "reason": "no newer version detected"
+      },
+      "uniqueness": {
+        "passed": true,
+        "reason": "unique (no exact or near-duplicate found)"
+      },
+      "injection_detected": false
+    },
+    {
+      "file": "empty-doc.md",
+      "overall_passed": false,
+      "quality": {
+        "passed": false,
+        "reason": "empty or too short (0 chars)"
+      },
+      "completeness": {
+        "passed": false,
+        "reason": "missing required metadata: date, page_count, source, title, version"
+      },
+      "recency": {
+        "passed": true,
+        "reason": "no newer version detected"
+      },
+      "uniqueness": {
+        "passed": true,
+        "reason": "unique (no exact or near-duplicate found)"
+      },
+      "injection_detected": false
+    },
+    {
+      "file": "fees-dup-a.md",
+      "overall_passed": true,
+      "quality": {
+        "passed": true,
+        "reason": "ok"
+      },
+      "completeness": {
+        "passed": true,
+        "reason": "ok"
+      },
+      "recency": {
+        "passed": true,
+        "reason": "no newer version detected"
+      },
+      "uniqueness": {
+        "passed": true,
+        "reason": "unique (no exact or near-duplicate found)"
+      },
+      "injection_detected": false
+    },
+    {
+      "file": "fees-dup-b.md",
+      "overall_passed": false,
+      "quality": {
+        "passed": true,
+        "reason": "ok"
+      },
+      "completeness": {
+        "passed": true,
+        "reason": "ok"
+      },
+      "recency": {
+        "passed": true,
+        "reason": "no newer version detected"
+      },
+      "uniqueness": {
+        "passed": false,
+        "reason": "exact duplicate of 'fees-dup-a.md' (SHA-256 match)"
+      },
+      "injection_detected": false
+    },
+    {
+      "file": "fees-near-dup.md",
+      "overall_passed": false,
+      "quality": {
+        "passed": true,
+        "reason": "ok"
+      },
+      "completeness": {
+        "passed": true,
+        "reason": "ok"
+      },
+      "recency": {
+        "passed": true,
+        "reason": "no newer version detected"
+      },
+      "uniqueness": {
+        "passed": false,
+        "reason": "near-duplicate of 'fees-dup-a.md' (cosine similarity 0.890 >= 0.85)"
+      },
+      "injection_detected": false
+    },
+    {
+      "file": "garbled-doc.md",
+      "overall_passed": false,
+      "quality": {
+        "passed": false,
+        "reason": "garbled text: contains replacement characters or raw byte escapes"
+      },
+      "completeness": {
+        "passed": true,
+        "reason": "ok"
+      },
+      "recency": {
+        "passed": true,
+        "reason": "no newer version detected"
+      },
+      "uniqueness": {
+        "passed": true,
+        "reason": "unique (no exact or near-duplicate found)"
+      },
+      "injection_detected": false
+    },
+    {
+      "file": "grad-policy.md",
+      "overall_passed": true,
+      "quality": {
+        "passed": true,
+        "reason": "ok"
+      },
+      "completeness": {
+        "passed": true,
+        "reason": "ok"
+      },
+      "recency": {
+        "passed": true,
+        "reason": "no newer version detected"
+      },
+      "uniqueness": {
+        "passed": true,
+        "reason": "unique (no exact or near-duplicate found)"
+      },
+      "injection_detected": false
+    },
+    {
+      "file": "injected-doc.md",
+      "overall_passed": true,
+      "quality": {
+        "passed": true,
+        "reason": "ok"
+      },
+      "completeness": {
+        "passed": true,
+        "reason": "ok"
+      },
+      "recency": {
+        "passed": true,
+        "reason": "no newer version detected"
+      },
+      "uniqueness": {
+        "passed": true,
+        "reason": "unique (no exact or near-duplicate found)"
+      },
+      "injection_detected": true
+    },
+    {
+      "file": "no-metadata.md",
+      "overall_passed": false,
+      "quality": {
+        "passed": true,
+        "reason": "ok"
+      },
+      "completeness": {
+        "passed": false,
+        "reason": "missing required metadata: date, page_count, source, title, version"
+      },
+      "recency": {
+        "passed": true,
+        "reason": "no newer version detected"
+      },
+      "uniqueness": {
+        "passed": true,
+        "reason": "unique (no exact or near-duplicate found)"
+      },
+      "injection_detected": false
+    },
+    {
+      "file": "rules-v1.md",
+      "overall_passed": false,
+      "quality": {
+        "passed": true,
+        "reason": "ok"
+      },
+      "completeness": {
+        "passed": true,
+        "reason": "ok"
+      },
+      "recency": {
+        "passed": false,
+        "reason": "superseded: a newer version 2.0 exists for source 'academic-rules.md'"
+      },
+      "uniqueness": {
+        "passed": true,
+        "reason": "unique (no exact or near-duplicate found)"
+      },
+      "injection_detected": false
+    },
+    {
+      "file": "rules-v2.md",
+      "overall_passed": true,
+      "quality": {
+        "passed": true,
+        "reason": "ok"
+      },
+      "completeness": {
+        "passed": true,
+        "reason": "ok"
+      },
+      "recency": {
+        "passed": true,
+        "reason": "no newer version detected"
+      },
+      "uniqueness": {
+        "passed": true,
+        "reason": "unique (no exact or near-duplicate found)"
+      },
+      "injection_detected": false
+    },
+    {
+      "file": "scholarship-policy.md",
+      "overall_passed": true,
+      "quality": {
+        "passed": true,
+        "reason": "ok"
+      },
+      "completeness": {
+        "passed": true,
+        "reason": "ok"
+      },
+      "recency": {
+        "passed": true,
+        "reason": "no newer version detected"
+      },
+      "uniqueness": {
+        "passed": true,
+        "reason": "unique (no exact or near-duplicate found)"
+      },
+      "injection_detected": false
+    },
+    {
+      "file": "truncated-doc.md",
+      "overall_passed": false,
+      "quality": {
+        "passed": true,
+        "reason": "ok"
+      },
+      "completeness": {
+        "passed": false,
+        "reason": "text appears truncated (ends with 'office reviews all probationary cases at the end of each se')"
+      },
+      "recency": {
+        "passed": true,
+        "reason": "no newer version detected"
+      },
+      "uniqueness": {
+        "passed": true,
+        "reason": "unique (no exact or near-duplicate found)"
+      },
+      "injection_detected": false
+    }
+  ]
+}
