@@ -188,6 +188,15 @@ def answer_question(
     for c in answer.citations:
         if (c.source.strip().lower(), c.section.strip().lower()) in retrieved_pairs:
             valid_citations.append(c)
+        else:
+            # Flexible match: if the source matches a retrieved passage and section or page aligns
+            for p in passages:
+                if c.source.strip().lower() == p.source.strip().lower():
+                    c_sec = c.section.strip().lower()
+                    p_sec = p.section.strip().lower()
+                    if c_sec in p_sec or p_sec in c_sec or (c.page is not None and c.page == p.page):
+                        valid_citations.append(Citation(source=p.source, section=p.section, page=c.page or p.page))
+                        break
 
     answered_from_context = answer.answered_from_context
     if answered_from_context and not valid_citations:
