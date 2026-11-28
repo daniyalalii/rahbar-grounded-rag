@@ -1,0 +1,83 @@
+---
+# RAGOps Part F3: Candidate indexer Job.
+# Builds the rahbar-candidate Chroma collection with smaller chunks (256/32)
+# so the Part C eval can compare it against the baseline (400/50).
+#
+# Usage:
+#   kubectl apply -f k8s/base/indexer-job-candidate.yaml -n rahbar
+#   kubectl wait --for=condition=complete job/indexer-candidate -n rahbar --timeout=300s
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: indexer-candidate
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: indexer-candidate
+    spec:
+      enableServiceLinks: false
+      serviceAccountName: indexer
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: indexer
+          image: rahbar-indexer:dev
+          imagePullPolicy: IfNotPresent
+          args: ["python", "-m", "pipeline.run"]
+          env:
+            # Candidate collection — does NOT overwrite the live baseline collection
+            - name: CHROMA_COLLECTION
+              value: rahbar-candidate
+            # Part C1: smaller chunk size for the candidate experiment
+            - name: CHUNK_SIZE
+              value: "256"
+            - name: CHUNK_OVERLAP
+              value: "32"
+            - name: QUARANTINE_DIR
+              value: /datalake/quarantine
+            - name: ARCHIVE_DIR
+              value: /datalake/archive
+            - name: REPORT_DIR
+              value: /datalake/reports
+            - name: DATALAKE_DIR
+              value: /datalake
+          envFrom:
+            - configMapRef:
+                name: rahbar-config
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: corpus
+              mountPath: /corpus
+              readOnly: true
+            - name: datalake
+              mountPath: /datalake
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: corpus
+          configMap:
+            name: corpus
+        - name: datalake
+          persistentVolumeClaim:
+            claimName: datalake-pvc
+

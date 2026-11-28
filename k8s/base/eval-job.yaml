@@ -35,7 +35,8 @@ spec:
             - /app/eval/golden.jsonl
             - --label
             - $(RUN_LABEL)
-            - --skip-level1
+            - --out-dir
+            - /eval/results
           env:
             - name: RUN_LABEL
               value: "k8s-eval"

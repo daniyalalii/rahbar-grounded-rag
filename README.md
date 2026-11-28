@@ -130,18 +130,168 @@ Indexing runs strictly in an isolated Job, never on API startup:
 
 ---
 
-## 5. Evaluation and Verification
+## 5. RAGOps Parts A–G: Exact Commands
 
-To score the running system against the 16-question golden evaluation dataset:
-```bash
-# Local evaluation
-python eval/run_eval.py --api http://localhost:8000 --golden eval/golden.yaml --baseline eval/baseline.json
+### Part A — Verification and Incremental Indexing
 
-# Via Ingress on Minikube
-python eval/run_eval.py --api http://$(minikube ip) --host rahbar.local --golden eval/golden.yaml
+```powershell
+# A1: Verify corpus (produces JSON report under datalake/reports/)
+$env:CORPUS_DIR="corpus/raw"; $env:DATALAKE_DIR="datalake"
+$env:QUARANTINE_DIR="datalake/quarantine"; $env:ARCHIVE_DIR="datalake/archive"
+$env:REPORT_DIR="datalake/reports"
+.\.venv\Scripts\python.exe -m pipeline.verify   # from indexer/ directory
+
+# A2: Run incremental pipeline (zero embeds on unchanged corpus)
+Push-Location indexer
+..\\.venv\Scripts\python.exe -m pipeline.run
+Pop-Location
+
+# A3: List archived (superseded) document versions
+.\.venv\Scripts\python.exe indexer/pipeline/rollback.py --list
+
+# Restore a specific archived version:
+.\.venv\Scripts\python.exe indexer/pipeline/rollback.py --restore datalake/archive/rules-v1.md
+
+# A4: Run Batch B through the pipeline
+$env:CORPUS_DIR="corpus/batch_b"
+Push-Location indexer
+..\\.venv\Scripts\python.exe -m pipeline.run
+Pop-Location
 ```
 
-The CI gate enforces three non-negotiable quality criteria:
-1. **Recall@5 Regression:** Must not drop more than 0.05 (5 percentage points) below baseline.
-2. **Citation Validity:** Must be >= 95.0%.
-3. **Must-Abstain Correctness:** Must be 100.0%.
+### Part B — Offline Evaluation
+
+```powershell
+# Full 3-level evaluation suite (single run)
+.\.venv\Scripts\python.exe eval/run_eval_ragops.py `
+  --api http://localhost:8000 `
+  --golden eval/golden.jsonl `
+  --label baseline `
+  --out-dir eval/results
+
+# Stochasticity experiment (run complete suite twice, compare)
+.\.venv\Scripts\python.exe eval/run_eval_ragops.py `
+  --api http://localhost:8000 `
+  --golden eval/golden.jsonl `
+  --stochasticity-full `
+  --out-dir eval/results
+```
+
+### Part C — Candidate Experiment and Release Gate
+
+```powershell
+# 1. Run baseline eval (use existing baseline.json if already saved)
+.\.venv\Scripts\python.exe eval/run_eval_ragops.py `
+  --api http://localhost:8000 --golden eval/golden.jsonl --label baseline `
+  --out-dir eval/results
+
+# 2. Re-index with candidate settings (chunk_size=256, overlap=32)
+$env:CHROMA_COLLECTION="rahbar-candidate"; $env:CHUNK_SIZE="256"; $env:CHUNK_OVERLAP="32"
+Push-Location indexer; ..\\.venv\Scripts\python.exe -m pipeline.run; Pop-Location
+
+# 3. Run candidate eval against candidate collection
+.\.venv\Scripts\python.exe eval/run_eval_ragops.py `
+  --api http://localhost:8000 --golden eval/golden.jsonl --label candidate `
+  --out-dir eval/results
+
+# 4. Run gate comparison
+.\.venv\Scripts\python.exe scripts/release_gate.py `
+  eval/results/baseline.json eval/results/candidate_<label>.json
+```
+
+### Part D — Tracing and Observability
+
+```powershell
+# Query the API (trace written automatically to traces/ dir)
+curl -s http://localhost:8000/api/ask `
+  -H "Content-Type: application/json" `
+  -d '{"question":"What CGPA is required for graduation?"}' | python -m json.tool
+
+# Inspect a specific trace by ID
+.\.venv\Scripts\python.exe scripts/trace_tool.py <trace-id>
+
+# Metrics summary over last 24h
+.\.venv\Scripts\python.exe scripts/metrics_summary.py --hours 24
+```
+
+### Part E — Query Coverage and Drift
+
+```powershell
+# Coverage BEFORE adding uncovered-topic golden questions
+.\.venv\Scripts\python.exe scripts/coverage_check.py `
+  --golden eval/golden_before.jsonl `
+  --live   scripts/live_queries.jsonl `
+  --sim-threshold 0.60 --min-coverage 0.85 `
+  --out eval/results/coverage_before.json
+
+# Coverage AFTER (expanded golden set with hostel/transport/cafeteria/sports/library/parking)
+.\.venv\Scripts\python.exe scripts/coverage_check.py `
+  --golden eval/golden.jsonl `
+  --live   scripts/live_queries.jsonl `
+  --sim-threshold 0.60 --min-coverage 0.85 `
+  --out eval/results/coverage_after.json
+```
+
+### Part F — Kubernetes (see k8s/README.md for full detail)
+
+```powershell
+# Start cluster and build images
+minikube start --driver=docker --cpus=4 --memory=6144 --addons=ingress
+& minikube -p minikube docker-env --shell=powershell | Invoke-Expression
+docker build -t rahbar-api:dev -f api/Dockerfile .
+docker build -t rahbar-indexer:dev -f indexer/Dockerfile .
+
+# Deploy full stack
+kubectl apply -k k8s/overlays/dev
+kubectl -n rahbar rollout status deployment/api
+
+# Initial index
+kubectl apply -f k8s/base/indexer-job.yaml -n rahbar
+kubectl -n rahbar wait --for=condition=complete job/indexer --timeout=300s
+kubectl -n rahbar logs job/indexer
+
+# Run evaluation suite on cluster
+kubectl apply -f k8s/base/eval-job.yaml -n rahbar
+kubectl -n rahbar wait --for=condition=complete job/rahbar-eval --timeout=600s
+kubectl -n rahbar logs job/rahbar-eval
+
+# Candidate experiment
+kubectl apply -f k8s/base/indexer-job-candidate.yaml -n rahbar
+kubectl apply -f k8s/base/api-candidate.yaml -n rahbar
+
+# Gate pass → rolling update; gate fail → delete candidate
+kubectl -n rahbar set image deployment/api api=rahbar-api:candidate   # pass
+kubectl apply -f k8s/base/api-candidate.yaml -n rahbar --dry-run=client # preview
+
+# Rollback
+kubectl -n rahbar rollout undo deployment/api
+kubectl -n rahbar rollout status deployment/api
+
+# Port-forward for local testing
+kubectl -n rahbar port-forward svc/api 8000:8000
+```
+
+---
+
+## 6. Evaluation and Verification (Legacy)
+
+To score the running system against the golden evaluation dataset:
+```powershell
+# Local (requires API running at localhost:8000)
+.\.venv\Scripts\python.exe eval/run_eval_ragops.py `
+  --api http://localhost:8000 --golden eval/golden.jsonl --out-dir eval/results
+
+# Via Minikube ingress
+.\.venv\Scripts\python.exe eval/run_eval_ragops.py `
+  --api http://$(minikube ip) --golden eval/golden.jsonl --out-dir eval/results
+```
+
+Gate thresholds (from `k8s/base/gate-configmap.yaml`):
+
+| Metric | Threshold |
+|--------|-----------|
+| Recall@5 max drop | 0.05 |
+| Faithfulness min | 0.70 |
+| p95 latency max | 5000 ms |
+| Abstention correctness min | 1.0 |
+| Citation validity min | 0.90 |

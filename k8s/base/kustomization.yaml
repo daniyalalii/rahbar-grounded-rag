@@ -24,6 +24,12 @@ configMapGenerator:
       - corpus/academic-rules-2023.md
       - corpus/academic-rules-2026.md
       - corpus/fees-2026.md
+      # Batch B documents (Part A4)
+      - corpus/batch_b/code-of-conduct.md
+      - corpus/batch_b/grad-policy.md
+      - corpus/batch_b/scholarship-policy.md
+      - corpus/batch_b/rules-v1.md
+      - corpus/batch_b/rules-v2.md
   - name: eval-scripts
     files:
       - eval/run_eval_ragops.py

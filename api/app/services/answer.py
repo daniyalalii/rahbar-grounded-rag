@@ -10,6 +10,7 @@ RAGOps Part D: every query emits a full trace record via tracer.emit_trace().
 from __future__ import annotations
 
 import logging
+import re
 import time
 
 from ..config import Settings
@@ -101,12 +102,41 @@ def answer_question(
     latency_stages["retrieve_ms"] = round((time.perf_counter() - t_retrieve_start) * 1000, 1)
 
     # Guardrail: injection detection on query
-    _injection_patterns = [
+    _query_injection_patterns = [
         "ignore all previous", "system override", "developer mode",
         "disregard all instructions", "forget everything",
     ]
-    if any(p in question.lower() for p in _injection_patterns):
+    if any(p in question.lower() for p in _query_injection_patterns):
         guardrail_actions.append({"type": "injection", "action": "flagged", "source": "user_query"})
+
+    # Guardrail: retrieval-time injection defence on retrieved chunks (Part D4)
+    _chunk_injection_regexes = [
+        re.compile(r"(?im)^.*\bignore\s+all\s+previous\s+instructions\b.*$"),
+        re.compile(r"(?im)^.*\bsystem\s*:\s*ignore\b.*$"),
+        re.compile(r"(?im)^.*\bdeveloper\s+mode\b.*$"),
+        re.compile(r"(?im)^.*\bdisregard\s+all\s+(?:previous\s+|university\s+)?(?:instructions|policies|rules)\b.*$"),
+        re.compile(r"(?im)^.*\bforget\s+(?:everything|all\s+previous)\b.*$"),
+    ]
+    for p in passages:
+        sanitized_text = p.text
+        matched_patterns: list[str] = []
+        for rx in _chunk_injection_regexes:
+            if rx.search(sanitized_text):
+                matched_patterns.append(rx.pattern)
+                sanitized_text = rx.sub("[REDACTED_INJECTION_ATTEMPT]", sanitized_text)
+        if matched_patterns:
+            p.text = sanitized_text
+            guardrail_actions.append({
+                "type": "injection",
+                "action": "sanitized_and_flagged",
+                "source": p.source,
+                "chunk_id": p.chunk_id,
+                "patterns_matched": len(matched_patterns),
+            })
+            log.warning(
+                "retrieval_injection_detected",
+                extra={"source": p.source, "chunk_id": p.chunk_id, "patterns": len(matched_patterns)},
+            )
 
     # Relevance floor & honest abstention
     has_relevant = any(p.score >= settings.relevance_floor for p in passages)
@@ -246,8 +276,15 @@ def answer_question(
         embed_version="v1",
         collection_name=settings.collection,
         retrieved_chunks=[
-            {"chunk_id": p.chunk_id, "doc_id": p.source,
-             "doc_version": getattr(p, "doc_version", "unknown"), "score": round(p.score, 4)}
+            {
+                "chunk_id": p.chunk_id,
+                "doc_id": p.source,
+                "doc_version": getattr(p, "doc_version", "unknown"),
+                "section": p.section,
+                "page": p.page,
+                "score": round(p.score, 4),
+                "text": p.text,
+            }
             for p in passages
         ],
         filters_applied={"relevance_floor": settings.relevance_floor, "top_k": settings.top_k},
@@ -256,7 +293,7 @@ def answer_question(
         llm_model=provider.name,
         llm_params={"temperature": settings.temperature},
         response_text=str(response.answer),
-        citations=[c.dict() if hasattr(c, "dict") else vars(c) for c in valid_citations],
+        citations=[c.model_dump() if hasattr(c, "model_dump") else vars(c) for c in valid_citations],
         guardrail_actions=guardrail_actions,
         latency_stages=latency_stages,
         cache_hit=False,

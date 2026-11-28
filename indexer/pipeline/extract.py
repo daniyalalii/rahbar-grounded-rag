@@ -161,7 +161,7 @@ def extract_md(path: Path, doc_version: str, superseded: bool) -> Document:
     raw = path.read_text(encoding="utf-8")
     front_matter, body = _parse_front_matter(raw)
 
-    effective_version = front_matter.get("doc_version", doc_version)
+    effective_version = front_matter.get("doc_version", front_matter.get("version", doc_version))
     effective_superseded_raw = front_matter.get("superseded", "")
     if effective_superseded_raw:
         effective_superseded = effective_superseded_raw.lower() == "true"

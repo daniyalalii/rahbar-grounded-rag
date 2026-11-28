@@ -42,15 +42,29 @@ spec:
                 capabilities:
                   drop:
                     - ALL
+              env:
+                - name: QUARANTINE_DIR
+                  value: /datalake/quarantine
+                - name: ARCHIVE_DIR
+                  value: /datalake/archive
+                - name: REPORT_DIR
+                  value: /datalake/reports
+                - name: DATALAKE_DIR
+                  value: /datalake
               volumeMounts:
                 - name: tmp
                   mountPath: /tmp
                 - name: corpus
                   mountPath: /corpus
                   readOnly: true
+                - name: datalake
+                  mountPath: /datalake
           volumes:
             - name: tmp
               emptyDir: {}
             - name: corpus
               configMap:
                 name: corpus
+            - name: datalake
+              persistentVolumeClaim:
+                claimName: datalake-pvc

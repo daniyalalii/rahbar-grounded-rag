@@ -1,7 +1,7 @@
 """The indexer Job's entry point. It runs once and exits (section 4.2).
 
     python -m pipeline.run --dummy    # week 1: three fake chunks, no model needed
-    python -m pipeline.run            # the real pipeline: extract, clean, chunk, embed, store
+    python -m pipeline.run            # the real pipeline: extract, verify, chunk, incremental embed & store
 
 Exit code 0 means the index was written; anything else fails the Job, and
 Kubernetes retries it up to the Job's backoffLimit.
@@ -14,20 +14,31 @@ import json
 import os
 import sys
 import time
+from collections import defaultdict
 from pathlib import Path
+from typing import Any, Callable, Optional
 
 from .config import IndexerSettings, get_settings
 from .models import Chunk
 
 
 def log(msg: str, **fields: object) -> None:
-    print(json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                      "logger": "rahbar.indexer", "msg": msg, **fields}), flush=True)
+    print(
+        json.dumps(
+            {
+                "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "logger": "rahbar.indexer",
+                "msg": msg,
+                **fields,
+            }
+        ),
+        flush=True,
+    )
 
 
 def _front_matter(path: Path) -> dict[str, str]:
     """Read `key: value` lines between leading '---' markers (used by eval/fixtures)."""
-    lines = path.read_text(encoding="utf-8").splitlines()
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     if not lines or lines[0].strip() != "---":
         return {}
     meta: dict[str, str] = {}
@@ -35,22 +46,23 @@ def _front_matter(path: Path) -> dict[str, str]:
         if line.strip() == "---":
             break
         key, _, value = line.partition(":")
-        meta[key.strip()] = value.strip()
+        if key.strip():
+            meta[key.strip()] = value.strip().strip('"').strip("'")
     return meta
 
 
 def discover(corpus_dir: str) -> list[tuple[Path, str, bool]]:
-    """List (path, doc_version, superseded) for every document to index.
-
-    corpus/fetch.py writes _index.json next to the files it downloads; use it when
-    present. Otherwise read Markdown front matter (the CI fixtures work this way).
-    """
+    """List (path, doc_version, superseded) for every document to index."""
     root = Path(corpus_dir)
     index = root / "_index.json"
     if index.exists():
         entries = json.loads(index.read_text(encoding="utf-8"))
-        return [(root / e["file"], str(e.get("doc_version", "unknown")),
-                 bool(e.get("superseded", False))) for e in entries]
+        out = []
+        for e in entries:
+            p = root / e["file"]
+            if p.exists():
+                out.append((p, str(e.get("doc_version", "unknown")), bool(e.get("superseded", False))))
+        return out
     found = []
     for path in sorted(root.glob("*")):
         if path.suffix.lower() not in {".pdf", ".md", ".html", ".txt"}:
@@ -58,40 +70,51 @@ def discover(corpus_dir: str) -> list[tuple[Path, str, bool]]:
         if path.name.lower().startswith("readme"):
             continue
         meta = _front_matter(path) if path.suffix.lower() == ".md" else {}
-        found.append((path, meta.get("doc_version", "unknown"),
-                      meta.get("superseded", "false").lower() == "true"))
+        ver = meta.get("doc_version", meta.get("version", "unknown"))
+        found.append((path, ver, meta.get("superseded", "false").lower() == "true"))
     return found
 
 
-def run_pipeline(settings: IndexerSettings) -> int:
+def run_pipeline(
+    settings: IndexerSettings,
+    embed_fn: Optional[Callable[[list[str], IndexerSettings], list[list[float]]]] = None,
+    client: Any = None,
+) -> int:
     from .chunk import chunk
     from .clean import clean
     from .embed import embed
     from .extract import extract
     from .models import Document
-    from .store import store_incremental
+    from .store import sync_incremental
     from .verify import verify_corpus
 
     documents = discover(settings.corpus_dir)
-    if not documents:
-        raise SystemExit(f"no documents found in {settings.corpus_dir}")
 
     # --- Stage 1b: Verification (RAGOps 4.2.1-4.2.4) ---
-    # Extract all docs first so verify can compare them against each other
     extracted: list[tuple[Path, Document]] = []
     for path, doc_version, superseded in documents:
         doc = clean(extract(str(path), doc_version, superseded))
         extracted.append((path, doc))
 
-    quarantine_dir = str(Path(settings.corpus_dir).parent / "quarantine")
-    report_dir = str(Path(settings.corpus_dir).parent.parent / "eval" / "results")
-    passed_docs, report = verify_corpus(extracted, quarantine_dir, report_dir)
+    corpus_parent = Path(settings.corpus_dir).parent
+    quarantine_dir = settings.quarantine_dir or str(corpus_parent / "quarantine")
+    archive_dir = settings.archive_dir or str(corpus_parent / "archive")
+    report_dir = settings.report_dir or str(corpus_parent.parent / "eval" / "results")
+
+    passed_docs, report = verify_corpus(
+        extracted, quarantine_dir, report_dir, archive_dir=archive_dir
+    )
     log(
         "verification complete",
         total=report.total,
         passed=report.passed,
         quarantined=report.quarantined,
+        archived=report.archived,
+        embedding_backend=report.embedding_backend,
     )
+    if report.embedding_warning:
+        log("verification warning", warning=report.embedding_warning)
+
     for r in report.documents:
         if not r.overall_passed:
             failed_checks = [
@@ -99,31 +122,30 @@ def run_pipeline(settings: IndexerSettings) -> int:
                 if not getattr(r, k).passed
             ]
             log(
-                "quarantined",
+                r.disposition,
                 file=r.file,
                 failed_checks=failed_checks,
                 injection=r.injection_detected,
             )
 
-    if not passed_docs:
-        log("no documents passed verification; nothing to index")
-        return 0
-
-    # --- Stages 2-4: Chunk, Embed for verified docs only ---
-    all_chunks: list[Chunk] = []
+    # --- Stage 2: Chunk verified docs only (before embedding!) ---
+    doc_chunks: dict[str, list[Chunk]] = defaultdict(list)
     for path, doc in passed_docs:
         pieces = chunk(doc, settings.chunk_size, settings.chunk_overlap)
         log("chunked", source=path.name, chunks=len(pieces))
-        all_chunks.extend(pieces)
+        if pieces:
+            doc_chunks[doc.source].extend(pieces)
 
-    if not all_chunks:
-        log("no chunks produced")
-        return 0
-
-    vectors = embed([c.text for c in all_chunks], settings)
-
-    # --- Stage 5: Incremental store (hash-based, no orphans) ---
-    return store_incremental(all_chunks, vectors, settings)
+    # --- Stages 3-5: Hash check -> Embed ONLY new/changed -> Incremental store ---
+    # Note: sync_incremental runs even when doc_chunks is empty so deleted docs are purged!
+    summary = sync_incremental(
+        doc_chunks,
+        settings,
+        embed_fn=embed_fn or embed,
+        client=client,
+    )
+    log("incremental summary", **summary)
+    return summary["newly_embedded_chunks"] + summary["updated_chunks"]
 
 
 def main() -> int:
@@ -132,11 +154,16 @@ def main() -> int:
     parser.add_argument("--fetch", action="store_true", help="fetch and verify real corpus before indexing")
     args = parser.parse_args()
     settings = get_settings()
-    log("indexer starting", dummy=args.dummy, fetch=args.fetch or settings.fetch_corpus,
-        embed_model=settings.embed_model, collection=settings.collection,
+    log(
+        "indexer starting",
+        dummy=args.dummy,
+        fetch=args.fetch or settings.fetch_corpus,
+        embed_model=settings.embed_model,
+        collection=settings.collection,
         chroma=f"{settings.chroma_host}:{settings.chroma_port}",
         corpus_dir=settings.corpus_dir,
-        pod=os.environ.get("HOSTNAME", "-"))
+        pod=os.environ.get("HOSTNAME", "-"),
+    )
     started = time.perf_counter()
     try:
         if args.fetch or settings.fetch_corpus:
@@ -158,7 +185,7 @@ def main() -> int:
     except Exception as exc:
         log("indexer failed", error=str(exc))
         return 1
-    log("indexer finished", chunks=count, seconds=round(time.perf_counter() - started, 1))
+    log("indexer finished", embedded_or_updated=count, seconds=round(time.perf_counter() - started, 1))
     return 0
 
 

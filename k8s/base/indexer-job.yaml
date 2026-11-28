@@ -44,6 +44,15 @@ spec:
             capabilities:
               drop:
                 - ALL
+          env:
+            - name: QUARANTINE_DIR
+              value: /datalake/quarantine
+            - name: ARCHIVE_DIR
+              value: /datalake/archive
+            - name: REPORT_DIR
+              value: /datalake/reports
+            - name: DATALAKE_DIR
+              value: /datalake
           volumeMounts:
             - name: tmp
               mountPath: /tmp

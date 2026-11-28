@@ -19,6 +19,10 @@ class IndexerSettings:
     redis_host: str = "redis"
     redis_port: int = 6379
     fetch_corpus: bool = False
+    datalake_dir: str = ""
+    quarantine_dir: str = ""
+    archive_dir: str = ""
+    report_dir: str = ""
 
 
 def get_settings() -> IndexerSettings:
@@ -34,4 +38,8 @@ def get_settings() -> IndexerSettings:
         redis_host=os.environ.get("REDIS_HOST", "redis"),
         redis_port=int(os.environ.get("REDIS_PORT", 6379)),
         fetch_corpus=os.environ.get("FETCH_CORPUS", "false").lower() in ("true", "1", "yes"),
+        datalake_dir=os.environ.get("DATALAKE_DIR", ""),
+        quarantine_dir=os.environ.get("QUARANTINE_DIR", ""),
+        archive_dir=os.environ.get("ARCHIVE_DIR", ""),
+        report_dir=os.environ.get("REPORT_DIR", ""),
     )

@@ -80,10 +80,16 @@ def print_trace(trace: dict, raw: bool = False) -> None:
     print(f"RETRIEVED CHUNKS ({len(chunks)}):")
     for i, c in enumerate(chunks, 1):
         print(f"  [{i}] chunk_id={c.get('chunk_id')}  doc_id={c.get('doc_id')}  "
-              f"version={c.get('doc_version')}  score={c.get('score')}")
+              f"version={c.get('doc_version')}  page={c.get('page')}  score={c.get('score')}")
         if c.get("text"):
-            snippet = str(c["text"])[:200].replace("\n", " ")
-            print(f"       text: {snippet}...")
+            print(f"       text: {c['text']}")
+
+    print("-" * 70)
+    print("EXACT PROMPT:")
+    if trace.get("prompt_text"):
+        print(trace["prompt_text"])
+    else:
+        print("  (prompt_text not recorded in this trace; only prompt_hash available)")
 
     print("-" * 70)
     guardrails = trace.get("guardrail_actions") or []

@@ -1,11 +1,11 @@
-﻿apiVersion: v1
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: rahbar-config
 data:
   EMBED_MODEL: "nomic-embed-text"
-  RETRIEVER: "stub"
-  LLM_PROVIDER: "stub"
+  RETRIEVER: "chroma"
+  LLM_PROVIDER: "ollama"
   CHROMA_HOST: "chroma"
   CHROMA_PORT: "8000"
   CHROMA_COLLECTION: "rahbar"

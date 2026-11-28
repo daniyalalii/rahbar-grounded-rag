@@ -140,14 +140,17 @@ def print_comparison(baseline: dict, candidate: dict) -> None:
         return f"{v:.4f}" if v is not None else "N/A"
 
     rows = [
-        ("recall@5",          "level2_retrieval.recall_at_5",         "level2.recall_at_5"),
-        ("MRR",               "level2_retrieval.mrr",                  "level2.mrr"),
-        ("nDCG@5",            "level2_retrieval.ndcg_at_5",           "level2.ndcg_at_5"),
-        ("faithfulness",      "level3_e2e.faithfulness_mean",         "level3.faithfulness_mean"),
-        ("abstention",        "level3_e2e.abstention_correctness",    "level3.abstention_correctness"),
-        ("citation validity", "level3_e2e.citation_validity_mean",    "level3.citation_validity_mean"),
-        ("p50 latency (ms)",  "level3_e2e.latency_p50_ms",           "level3.latency_p50_ms"),
-        ("p95 latency (ms)",  "level3_e2e.latency_p95_ms",           "level3.latency_p95_ms"),
+        ("L1 similarity gap", "level1_embedding.similarity_gap",       "level1.similarity_gap"),
+        ("L1 embed ms/chunk", "level1_embedding.embed_time_per_chunk_ms", "level1.embed_time_per_chunk_ms"),
+        ("L2 recall@3",       "level2_retrieval.recall_at_3",         "level2.recall_at_3"),
+        ("L2 recall@5",       "level2_retrieval.recall_at_5",         "level2.recall_at_5"),
+        ("L2 MRR",            "level2_retrieval.mrr",                  "level2.mrr"),
+        ("L2 nDCG@5",         "level2_retrieval.ndcg_at_5",           "level2.ndcg_at_5"),
+        ("L3 faithfulness",   "level3_e2e.faithfulness_mean",         "level3.faithfulness_mean"),
+        ("L3 abstention",     "level3_e2e.abstention_correctness",    "level3.abstention_correctness"),
+        ("L3 citation valid", "level3_e2e.citation_validity_mean",    "level3.citation_validity_mean"),
+        ("L3 p50 lat (ms)",   "level3_e2e.latency_p50_ms",           "level3.latency_p50_ms"),
+        ("L3 p95 lat (ms)",   "level3_e2e.latency_p95_ms",           "level3.latency_p95_ms"),
     ]
     print(f"\n{'Metric':<25} {'Baseline':>12} {'Candidate':>12} {'Delta':>10}")
     print("-" * 65)
