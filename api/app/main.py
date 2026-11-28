@@ -88,3 +88,9 @@ app.include_router(ask.router)
 _ui_dir = os.environ.get("SERVE_UI_DIR")
 if _ui_dir:
     app.mount("/", StaticFiles(directory=_ui_dir, html=True), name="ui")
+else:
+    from fastapi.responses import RedirectResponse
+
+    @app.get("/", include_in_schema=False)
+    def root() -> RedirectResponse:
+        return RedirectResponse(url="/docs")
