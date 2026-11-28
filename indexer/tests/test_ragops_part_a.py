@@ -2,12 +2,8 @@
 
 from __future__ import annotations
 
-import json
-import shutil
 from pathlib import Path
 from typing import Any
-
-import pytest
 
 from pipeline.config import IndexerSettings
 from pipeline.models import Document, Page
@@ -16,8 +12,6 @@ from pipeline.run import run_pipeline
 from pipeline.verify import (
     _deterministic_bow_vector,
     check_completeness,
-    check_quality,
-    check_recency,
     verify_corpus,
 )
 

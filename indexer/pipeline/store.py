@@ -20,7 +20,7 @@ import json
 import time
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 from .config import IndexerSettings
 from .models import Chunk
